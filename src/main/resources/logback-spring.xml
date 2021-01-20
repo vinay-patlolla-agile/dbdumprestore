@@ -1,0 +1,19 @@
+<configuration debug="false">
+    <include
+            resource="/org/springframework/boot/logging/logback/base.xml" />
+    <appender name="STDOUT"
+              class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%X{user}] [%X{function}] [%thread] %-5level %logger{36} - %msg%n
+            </pattern>
+        </encoder>
+    </appender>
+
+
+    <logger name="org.springframework" level="ERROR" />
+    <logger name="com.utility.dbdumprestore" level="DEBUG" />
+
+    <root level="DEBUG">
+        <appender-ref ref="STDOUT" />
+    </root>
+</configuration>
