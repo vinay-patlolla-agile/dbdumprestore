@@ -506,7 +506,7 @@ public class DbExport {
                 sql.append(getTableInsertStatement(childTable));
 
             }
-            sql.append(getDataInsertStatement(parentTable,childTable,"customer_transaction_ref","2021-01-18 21:21:51","2021-01-18 22:21:55"));
+            sql.append(getDataInsertStatement(parentTable,childTable,"customer_transaction_ref",dbProperties.getFromCreatedDateTime(),dbProperties.getToCreatedDateTime()));
         }catch (SQLException e){
             logger.error("Exception occurred while processing export for tables {} {} with error {} : ",parentTable,childTable, e);
         }

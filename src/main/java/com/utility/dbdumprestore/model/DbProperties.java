@@ -16,8 +16,27 @@ public class DbProperties {
     String exportDir;
     String sqlFileName;
 
-
     Boolean createTableIfNotExisits;
+
+    String fromCreatedDateTime;
+    String toCreatedDateTime;
+
+
+    public String getToCreatedDateTime() {
+        return toCreatedDateTime;
+    }
+
+    public void setToCreatedDateTime(String toCreatedDateTime) {
+        this.toCreatedDateTime = toCreatedDateTime;
+    }
+
+    public String getFromCreatedDateTime() {
+        return fromCreatedDateTime;
+    }
+
+    public void setFromCreatedDateTime(String fromCreatedDateTime) {
+        this.fromCreatedDateTime = fromCreatedDateTime;
+    }
 
     public Boolean getCreateTableIfNotExisits() {
         return createTableIfNotExisits;
@@ -123,9 +142,19 @@ public class DbProperties {
             return false;
         if (exportDir != null ? !exportDir.equals(that.exportDir) : that.exportDir != null)
             return false;
-        return sqlFileName != null ?
-            sqlFileName.equals(that.sqlFileName) :
-            that.sqlFileName == null;
+        if (sqlFileName != null ? !sqlFileName.equals(that.sqlFileName) : that.sqlFileName != null)
+            return false;
+        if (createTableIfNotExisits != null ?
+            !createTableIfNotExisits.equals(that.createTableIfNotExisits) :
+            that.createTableIfNotExisits != null)
+            return false;
+        if (fromCreatedDateTime != null ?
+            !fromCreatedDateTime.equals(that.fromCreatedDateTime) :
+            that.fromCreatedDateTime != null)
+            return false;
+        return toCreatedDateTime != null ?
+            toCreatedDateTime.equals(that.toCreatedDateTime) :
+            that.toCreatedDateTime == null;
     }
 
     @Override public int hashCode() {
@@ -138,6 +167,11 @@ public class DbProperties {
         result = 31 * result + (childTable != null ? childTable.hashCode() : 0);
         result = 31 * result + (exportDir != null ? exportDir.hashCode() : 0);
         result = 31 * result + (sqlFileName != null ? sqlFileName.hashCode() : 0);
+        result = 31 * result + (createTableIfNotExisits != null ?
+            createTableIfNotExisits.hashCode() :
+            0);
+        result = 31 * result + (fromCreatedDateTime != null ? fromCreatedDateTime.hashCode() : 0);
+        result = 31 * result + (toCreatedDateTime != null ? toCreatedDateTime.hashCode() : 0);
         return result;
     }
 
@@ -146,6 +180,8 @@ public class DbProperties {
             + ", password='" + password + '\'' + ", jdbcUrl='" + jdbcUrl + '\'' + ", jdbcDriver='"
             + jdbcDriver + '\'' + ", parentTable='" + parentTable + '\'' + ", childTable='"
             + childTable + '\'' + ", exportDir='" + exportDir + '\'' + ", sqlFileName='"
-            + sqlFileName + '\'' + '}';
+            + sqlFileName + '\'' + ", createTableIfNotExisits=" + createTableIfNotExisits
+            + ", fromCreatedDateTime='" + fromCreatedDateTime + '\'' + ", toCreatedDateTime='"
+            + toCreatedDateTime + '\'' + '}';
     }
 }
