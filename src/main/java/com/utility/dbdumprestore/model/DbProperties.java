@@ -3,6 +3,8 @@ package com.utility.dbdumprestore.model;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.List;
+
 @Configuration
 @ConfigurationProperties(prefix = "db")
 public class DbProperties {
@@ -12,39 +14,13 @@ public class DbProperties {
     String jdbcUrl;
     String jdbcDriver;
     String parentTable;
-    String childTable;
+    List<String> childTables;
+    String relatedColumn;
     String exportDir;
     String sqlFileName;
-
     Boolean createTableIfNotExisits;
-
     String fromCreatedDateTime;
     String toCreatedDateTime;
-
-
-    public String getToCreatedDateTime() {
-        return toCreatedDateTime;
-    }
-
-    public void setToCreatedDateTime(String toCreatedDateTime) {
-        this.toCreatedDateTime = toCreatedDateTime;
-    }
-
-    public String getFromCreatedDateTime() {
-        return fromCreatedDateTime;
-    }
-
-    public void setFromCreatedDateTime(String fromCreatedDateTime) {
-        this.fromCreatedDateTime = fromCreatedDateTime;
-    }
-
-    public Boolean getCreateTableIfNotExisits() {
-        return createTableIfNotExisits;
-    }
-
-    public void setCreateTableIfNotExisits(Boolean createTableIfNotExisits) {
-        this.createTableIfNotExisits = createTableIfNotExisits;
-    }
 
     public String getName() {
         return name;
@@ -94,12 +70,20 @@ public class DbProperties {
         this.parentTable = parentTable;
     }
 
-    public String getChildTable() {
-        return childTable;
+    public List<String> getChildTables() {
+        return childTables;
     }
 
-    public void setChildTable(String childTable) {
-        this.childTable = childTable;
+    public void setChildTables(List<String> childTables) {
+        this.childTables = childTables;
+    }
+
+    public String getRelatedColumn() {
+        return relatedColumn;
+    }
+
+    public void setRelatedColumn(String relatedColumn) {
+        this.relatedColumn = relatedColumn;
     }
 
     public String getExportDir() {
@@ -116,6 +100,30 @@ public class DbProperties {
 
     public void setSqlFileName(String sqlFileName) {
         this.sqlFileName = sqlFileName;
+    }
+
+    public Boolean getCreateTableIfNotExisits() {
+        return createTableIfNotExisits;
+    }
+
+    public void setCreateTableIfNotExisits(Boolean createTableIfNotExisits) {
+        this.createTableIfNotExisits = createTableIfNotExisits;
+    }
+
+    public String getFromCreatedDateTime() {
+        return fromCreatedDateTime;
+    }
+
+    public void setFromCreatedDateTime(String fromCreatedDateTime) {
+        this.fromCreatedDateTime = fromCreatedDateTime;
+    }
+
+    public String getToCreatedDateTime() {
+        return toCreatedDateTime;
+    }
+
+    public void setToCreatedDateTime(String toCreatedDateTime) {
+        this.toCreatedDateTime = toCreatedDateTime;
     }
 
     @Override public boolean equals(Object o) {
@@ -138,7 +146,11 @@ public class DbProperties {
             return false;
         if (parentTable != null ? !parentTable.equals(that.parentTable) : that.parentTable != null)
             return false;
-        if (childTable != null ? !childTable.equals(that.childTable) : that.childTable != null)
+        if (childTables != null ? !childTables.equals(that.childTables) : that.childTables != null)
+            return false;
+        if (relatedColumn != null ?
+            !relatedColumn.equals(that.relatedColumn) :
+            that.relatedColumn != null)
             return false;
         if (exportDir != null ? !exportDir.equals(that.exportDir) : that.exportDir != null)
             return false;
@@ -164,7 +176,8 @@ public class DbProperties {
         result = 31 * result + (jdbcUrl != null ? jdbcUrl.hashCode() : 0);
         result = 31 * result + (jdbcDriver != null ? jdbcDriver.hashCode() : 0);
         result = 31 * result + (parentTable != null ? parentTable.hashCode() : 0);
-        result = 31 * result + (childTable != null ? childTable.hashCode() : 0);
+        result = 31 * result + (childTables != null ? childTables.hashCode() : 0);
+        result = 31 * result + (relatedColumn != null ? relatedColumn.hashCode() : 0);
         result = 31 * result + (exportDir != null ? exportDir.hashCode() : 0);
         result = 31 * result + (sqlFileName != null ? sqlFileName.hashCode() : 0);
         result = 31 * result + (createTableIfNotExisits != null ?
@@ -178,10 +191,10 @@ public class DbProperties {
     @Override public String toString() {
         return "DbProperties{" + "name='" + name + '\'' + ", username='" + username + '\''
             + ", password='" + password + '\'' + ", jdbcUrl='" + jdbcUrl + '\'' + ", jdbcDriver='"
-            + jdbcDriver + '\'' + ", parentTable='" + parentTable + '\'' + ", childTable='"
-            + childTable + '\'' + ", exportDir='" + exportDir + '\'' + ", sqlFileName='"
-            + sqlFileName + '\'' + ", createTableIfNotExisits=" + createTableIfNotExisits
-            + ", fromCreatedDateTime='" + fromCreatedDateTime + '\'' + ", toCreatedDateTime='"
-            + toCreatedDateTime + '\'' + '}';
+            + jdbcDriver + '\'' + ", parentTable='" + parentTable + '\'' + ", childTables="
+            + childTables + ", relatedColumn='" + relatedColumn + '\'' + ", exportDir='" + exportDir
+            + '\'' + ", sqlFileName='" + sqlFileName + '\'' + ", createTableIfNotExisits="
+            + createTableIfNotExisits + ", fromCreatedDateTime='" + fromCreatedDateTime + '\''
+            + ", toCreatedDateTime='" + toCreatedDateTime + '\'' + '}';
     }
 }

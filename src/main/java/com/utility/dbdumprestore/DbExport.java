@@ -17,6 +17,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.stream.Collectors;
 
 @Component
 public class DbExport {
@@ -168,7 +169,7 @@ public class DbExport {
      * @return String generated SQL insert
      * @throws SQLException exception
      */
-    private String getDataInsertStatement(String parentTable,String childTable,String relatedColumn,String fromCreatedDateTime,String toCreatedDateTime) throws SQLException {
+    private String getDataInsertStatement(String parentTable,List<String> childTables,String relatedColumn,String fromCreatedDateTime,String toCreatedDateTime) throws SQLException {
 
         StringBuilder sql = new StringBuilder();
         ResultSet parentResultSet = null;
@@ -186,19 +187,23 @@ public class DbExport {
             return sql.toString();
         }
 
-        sql.append("\n--").append("\n-- Inserts of ").append(parentTable).append(" AND ").append(childTable).append("\n--\n\n");
-        sql.append("\n--").append("\n-- Inserts of ").append(childTable).append("\n--\n\n");
+        sql.append("\n--").append("\n-- Inserts of ").append(parentTable).append(" AND ").append(childTables.stream().collect(
+            Collectors.joining(","))).append("\n--\n\n");
 
         //temporarily disable foreign key constraint
         sql.append("\n/*!40000 ALTER TABLE `").append(parentTable).append("` DISABLE KEYS */;\n");
-        sql.append("\n/*!40000 ALTER TABLE `").append(childTable).append("` DISABLE KEYS */;\n");
+        childTables.stream().forEach(table->{
+            sql.append("\n/*!40000 ALTER TABLE `").append(table).append("` DISABLE KEYS */;\n");
+        });
+        //sql.append("\n/*!40000 ALTER TABLE `").append(childTable).append("` DISABLE KEYS */;\n");
 
         sql.append("\n--\n")
             .append(Utility.SQL_START_PATTERN).append(" table insert : ").append(parentTable)
             .append("\n--\n");
 
         sql.append("\n--\n")
-            .append(Utility.SQL_START_PATTERN).append(" table insert : ").append(childTable)
+            .append(Utility.SQL_START_PATTERN).append(" table insert : ").append(childTables.stream().collect(
+            Collectors.joining(",")))
             .append("\n--\n");
 
 
@@ -221,7 +226,11 @@ public class DbExport {
         }
         //now we're going to build the values for data insertion
         parentResultSet.beforeFirst();
+        int recordCount = 0;
         while(parentResultSet.next()) {
+            recordCount++;
+            sql.append("-- Record ").append(recordCount);
+            sql.append("\n--\n");
             sql.append("INSERT INTO `").append(parentTable).append("`(");
             sql.append(columns.toString());
             //remove the last whitespace and comma
@@ -265,82 +274,90 @@ public class DbExport {
             //parenthesis otherwise append a closing parenthesis and a comma
             //for the next set of values
             sql.append(");");
-            sql.append("\n--\n");
+            sql.append("\n");
             //End of processing a Single Parent row
 
+            for (String childTable:childTables) {
 
-            ResultSet childTableResultSet = getResultSetFromChildTable(childTable,relatedColumn,relatedColumnValue);
+                ResultSet childTableResultSet = getResultSetFromChildTable(childTable,relatedColumn,relatedColumnValue);
 
-            ResultSetMetaData childTableMetaData = childTableResultSet.getMetaData();
-            int childTableColumnCount = childTableMetaData.getColumnCount();
+                ResultSetMetaData childTableMetaData = childTableResultSet.getMetaData();
+                int childTableColumnCount = childTableMetaData.getColumnCount();
                 StringBuilder childTableColumns = new StringBuilder();
-            //generate the column names that are present
-            //in the returned result set
-            //at this point the insert is INSERT INTO (`col1`, `col2`, ...)
-            for(int i = 0; i < childTableColumnCount; i++) {
-                childTableColumns.append("`")
-                    .append(childTableMetaData.getColumnName( i + 1))
-                    .append("`, ");
-            }
-
-            //now we're going to build the values for data insertion
-            childTableResultSet.beforeFirst();
-
-            while(childTableResultSet.next()) {
-                sql.append("INSERT INTO `").append(childTable).append("`(");
-
-                sql.append(childTableColumns.toString());
-                //remove the last whitespace and comma
-                sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1).append(") VALUES \n");
-
-                sql.append("(");
-                for (int i = 0; i < columnCount; i++) {
-
-                    int columnType = childTableMetaData.getColumnType(i + 1);
-                    int columnIndex = i + 1;
-
-                    //this is the part where the values are processed based on their type
-                    if (Objects.isNull(childTableResultSet.getObject(columnIndex))) {
-                        sql.append("").append(childTableResultSet.getObject(columnIndex)).append(", ");
-                    } else if (columnType == Types.INTEGER || columnType == Types.TINYINT
-                        || columnType == Types.BIT) {
-                        sql.append(childTableResultSet.getInt(columnIndex)).append(", ");
-                    } else {
-
-                        String val = childTableResultSet.getString(columnIndex);
-                        //escape the single quotes that might be in the value
-                        val = val.replace("'", "\\'");
-
-                        sql.append("'").append(val).append("', ");
-                    }
+                //generate the column names that are present
+                //in the returned result set
+                //at this point the insert is INSERT INTO (`col1`, `col2`, ...)
+                for(int i = 0; i < childTableColumnCount; i++) {
+                    childTableColumns.append("`")
+                        .append(childTableMetaData.getColumnName( i + 1))
+                        .append("`, ");
                 }
 
-                //now that we're done with a row
-                //let's remove the last whitespace and comma
-                sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1);
+                //now we're going to build the values for data insertion
+                childTableResultSet.beforeFirst();
 
-                //if this is the last row, just append a closing
-                //parenthesis otherwise append a closing parenthesis and a comma
-                //for the next set of values
-                sql.append(");");
-                sql.append("\n--\n");
+                while(childTableResultSet.next()) {
+                    sql.append("INSERT INTO `").append(childTable).append("`(");
+
+                    sql.append(childTableColumns.toString());
+                    //remove the last whitespace and comma
+                    sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1).append(") VALUES \n");
+
+                    sql.append("(");
+                    for (int i = 0; i < childTableColumnCount; i++) {
+
+                        int columnType = childTableMetaData.getColumnType(i + 1);
+                        int columnIndex = i + 1;
+
+                        //this is the part where the values are processed based on their type
+                        if (Objects.isNull(childTableResultSet.getObject(columnIndex))) {
+                            sql.append("").append(childTableResultSet.getObject(columnIndex)).append(", ");
+                        } else if (columnType == Types.INTEGER || columnType == Types.TINYINT
+                            || columnType == Types.BIT) {
+                            sql.append(childTableResultSet.getInt(columnIndex)).append(", ");
+                        } else {
+
+                            String val = childTableResultSet.getString(columnIndex);
+                            //escape the single quotes that might be in the value
+                            val = val.replace("'", "\\'");
+
+                            sql.append("'").append(val).append("', ");
+                        }
+                    }
+
+                    //now that we're done with a row
+                    //let's remove the last whitespace and comma
+                    sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1);
+
+                    //if this is the last row, just append a closing
+                    //parenthesis otherwise append a closing parenthesis and a comma
+                    //for the next set of values
+                    sql.append(");");
+                    sql.append("\n");
+                }
+                childTableResultSet.close();
             }
-            childTableResultSet.close();
+            sql.append("-- Record ").append(recordCount).append(" Ends --");
         }
 
         sql.append("\n--\n")
             .append(Utility.SQL_END_PATTERN).append(" table insert : ").append(parentTable)
             .append("\n--\n");
         sql.append("\n--\n")
-            .append(Utility.SQL_END_PATTERN).append(" table insert : ").append(childTable)
+            .append(Utility.SQL_END_PATTERN).append(" table insert : ").append(childTables.stream().collect(
+            Collectors.joining(",")))
             .append("\n--\n");
 
         //enable FK constraint
         sql.append("\n/*!40000 ALTER TABLE `").append(parentTable).append("` ENABLE KEYS */;\n");
-        sql.append("\n/*!40000 ALTER TABLE `").append(childTable).append("` ENABLE KEYS */;\n");
+        childTables.stream().forEach(table->{
+            sql.append("\n/*!40000 ALTER TABLE `").append(table).append("` ENABLE KEYS */;\n");
+        });
 
         return sql.toString();
     }
+
+
 
     private ResultSet getResultSetFromChildTable(String childTable, String relatedColumn,String relatedValue)
         throws SQLException {
@@ -483,7 +500,7 @@ public class DbExport {
      * @return String
      * @throws SQLException exception
      */
-    private String exportToSql(String parentTable,String childTable) throws SQLException {
+    private String exportToSql() throws SQLException {
 
         StringBuilder sql = new StringBuilder();
         sql.append("--");
@@ -497,18 +514,19 @@ public class DbExport {
             .append("\n/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;")
             .append("\n/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;");
 
-        TablesResponse tablesResponse = Utility.getTables(database, stmt,parentTable,childTable);
+       // TablesResponse tablesResponse = Utility.getTables(database, stmt,parentTable,childTable);
 
-        List<String> tables = tablesResponse.getTables();
+        //List<String> tables = tablesResponse.getTables();
         try {
             if(dbProperties.getCreateTableIfNotExisits()){
-                sql.append(getTableInsertStatement(parentTable));
-                sql.append(getTableInsertStatement(childTable));
-
+                sql.append(getTableInsertStatement(dbProperties.getParentTable()));
+                for (String childTable:dbProperties.getChildTables()) {
+                    sql.append(getTableInsertStatement(childTable));
+                }
             }
-            sql.append(getDataInsertStatement(parentTable,childTable,"customer_transaction_ref",dbProperties.getFromCreatedDateTime(),dbProperties.getToCreatedDateTime()));
+            sql.append(getDataInsertStatement(dbProperties.getParentTable(),dbProperties.getChildTables(),dbProperties.getRelatedColumn(),dbProperties.getFromCreatedDateTime(),dbProperties.getToCreatedDateTime()));
         }catch (SQLException e){
-            logger.error("Exception occurred while processing export for tables {} {} with error {} : ",parentTable,childTable, e);
+            logger.error("Exception occurred while processing export for tables {} {} with error {} : ",dbProperties.getParentTable(),dbProperties.getChildTables().stream().collect(Collectors.joining(",")), e);
         }
 
         sql.append("\n/*!40101 SET SQL_MODE=IFNULL(@OLD_SQL_MODE, '') */;")
@@ -564,7 +582,7 @@ public class DbExport {
 
         stmt = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
 
-        String sql = exportToSql(dbProperties.getParentTable(),dbProperties.getChildTable());
+        String sql = exportToSql();
 
         //close the statement
         stmt.close();
