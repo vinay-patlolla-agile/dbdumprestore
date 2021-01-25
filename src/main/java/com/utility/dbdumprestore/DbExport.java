@@ -16,16 +16,20 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
-import java.util.Properties;
 import java.util.stream.Collectors;
 
 @Component
 public class DbExport {
 
-    private DbProperties dbProperties;
+    private final DbProperties dbProperties;
 
-    public DbExport(DbProperties dbProperties){
+    private final Utility utility;
+
+
+
+    public DbExport(DbProperties dbProperties, Utility utility){
         this.dbProperties = dbProperties;
+        this.utility = utility;
     }
     private Statement stmt;
 
@@ -62,32 +66,7 @@ public class DbExport {
     public static final String JDBC_DRIVER_NAME = "JDBC_DRIVER_NAME";
     public static final String SQL_FILE_NAME = "SQL_FILE_NAME";
 
-    /**
-     * This function will check if the required minimum
-     * properties are set for database connection and exporting
-     * password is excluded here because it's possible to have a mysql database
-     * user with no password
-     * @return true if all required properties are present and false if otherwise
-     */
-    private boolean isValidateProperties() {
-        return dbProperties != null &&
-            StringUtils.hasLength(dbProperties.getUsername()) &&
-            (StringUtils.hasLength(dbProperties.getName()) || StringUtils.hasLength(dbProperties.getJdbcUrl()));
-    }
 
-
-
-    /**
-     * This function will return true
-     * or false based on the availability
-     * or absence of a custom output sql
-     * file name
-     * @return bool
-     */
-    private boolean isSqlFileNamePropertySet(){
-        return dbProperties != null &&
-            StringUtils.hasLength(dbProperties.getSqlFileName());
-    }
 
     /**
      * This will generate the SQL statement
@@ -109,20 +88,12 @@ public class DbExport {
             while ( rs.next() ) {
                 String qtbl = rs.getString(1);
                 String query = rs.getString(2);
-                sql.append("\n\n--");
-                sql.append("\n").append(Utility.SQL_START_PATTERN).append("  table dump : ").append(qtbl);
-                sql.append("\n--\n\n");
-
                 if(addIfNotExists) {
                     query = query.trim().replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS");
                 }
 
                 sql.append(query).append(";\n\n");
             }
-
-            sql.append("\n\n--");
-            sql.append("\n").append(Utility.SQL_END_PATTERN).append("  table dump : ").append(table);
-            sql.append("\n--\n\n");
         }
 
         return sql.toString();
@@ -187,26 +158,12 @@ public class DbExport {
             return sql.toString();
         }
 
-        sql.append("\n--").append("\n-- Inserts of ").append(parentTable).append(" AND ").append(childTables.stream().collect(
-            Collectors.joining(","))).append("\n--\n\n");
-
         //temporarily disable foreign key constraint
         sql.append("\n/*!40000 ALTER TABLE `").append(parentTable).append("` DISABLE KEYS */;\n");
         childTables.stream().forEach(table->{
             sql.append("\n/*!40000 ALTER TABLE `").append(table).append("` DISABLE KEYS */;\n");
         });
         //sql.append("\n/*!40000 ALTER TABLE `").append(childTable).append("` DISABLE KEYS */;\n");
-
-        sql.append("\n--\n")
-            .append(Utility.SQL_START_PATTERN).append(" table insert : ").append(parentTable)
-            .append("\n--\n");
-
-        sql.append("\n--\n")
-            .append(Utility.SQL_START_PATTERN).append(" table insert : ").append(childTables.stream().collect(
-            Collectors.joining(",")))
-            .append("\n--\n");
-
-
 
         ResultSetMetaData metaData = parentResultSet.getMetaData();
         int columnCount = metaData.getColumnCount();
@@ -339,15 +296,7 @@ public class DbExport {
             }
             sql.append("-- Record ").append(recordCount).append(" Ends --");
         }
-
-        sql.append("\n--\n")
-            .append(Utility.SQL_END_PATTERN).append(" table insert : ").append(parentTable)
-            .append("\n--\n");
-        sql.append("\n--\n")
-            .append(Utility.SQL_END_PATTERN).append(" table insert : ").append(childTables.stream().collect(
-            Collectors.joining(",")))
-            .append("\n--\n");
-
+        sql.append("\n--\n");
         //enable FK constraint
         sql.append("\n/*!40000 ALTER TABLE `").append(parentTable).append("` ENABLE KEYS */;\n");
         childTables.stream().forEach(table->{
@@ -390,109 +339,6 @@ public class DbExport {
     }
 
     /**
-     * This function will generate the insert statements needed
-     * to recreate the table under processing.
-     * @param table the table to get inserts statement for
-     * @return String generated SQL insert
-     * @throws SQLException exception
-     */
-    private String getDataInsertStatement(String table) throws SQLException {
-
-        StringBuilder sql = new StringBuilder();
-
-        ResultSet rs = stmt.executeQuery("SELECT * FROM " + "`" + table + "`;");
-
-        //move to the last row to get max rows returned
-        rs.last();
-        int rowCount = rs.getRow();
-
-        //there are no records just return empty string
-        if(rowCount <= 0) {
-            return sql.toString();
-        }
-
-        sql.append("\n--").append("\n-- Inserts of ").append(table).append("\n--\n\n");
-
-        //temporarily disable foreign key constraint
-        sql.append("\n/*!40000 ALTER TABLE `").append(table).append("` DISABLE KEYS */;\n");
-
-        sql.append("\n--\n")
-            .append(Utility.SQL_START_PATTERN).append(" table insert : ").append(table)
-            .append("\n--\n");
-
-        sql.append("INSERT INTO `").append(table).append("`(");
-
-        ResultSetMetaData metaData = rs.getMetaData();
-        int columnCount = metaData.getColumnCount();
-
-        //generate the column names that are present
-        //in the returned result set
-        //at this point the insert is INSERT INTO (`col1`, `col2`, ...)
-        for(int i = 0; i < columnCount; i++) {
-            sql.append("`")
-                .append(metaData.getColumnName( i + 1))
-                .append("`, ");
-        }
-
-        //remove the last whitespace and comma
-        sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1).append(") VALUES \n");
-
-        //now we're going to build the values for data insertion
-        rs.beforeFirst();
-        while(rs.next()) {
-            sql.append("(");
-            for(int i = 0; i < columnCount; i++) {
-
-                int columnType = metaData.getColumnType(i + 1);
-                int columnIndex = i + 1;
-
-                //this is the part where the values are processed based on their type
-                if(Objects.isNull(rs.getObject(columnIndex))) {
-                    sql.append("").append(rs.getObject(columnIndex)).append(", ");
-                }
-                else if( columnType == Types.INTEGER || columnType == Types.TINYINT || columnType == Types.BIT) {
-                    sql.append(rs.getInt(columnIndex)).append(", ");
-                }
-                else {
-
-                    String val = rs.getString(columnIndex);
-                    //escape the single quotes that might be in the value
-                    val = val.replace("'", "\\'");
-
-                    sql.append("'").append(val).append("', ");
-                }
-            }
-
-            //now that we're done with a row
-            //let's remove the last whitespace and comma
-            sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1);
-
-            //if this is the last row, just append a closing
-            //parenthesis otherwise append a closing parenthesis and a comma
-            //for the next set of values
-            if(rs.isLast()) {
-                sql.append(")");
-            } else {
-                sql.append("),\n");
-            }
-        }
-
-        //now that we are done processing the entire row
-        //let's add the terminator
-        sql.append(";");
-
-        sql.append("\n--\n")
-            .append(Utility.SQL_END_PATTERN).append(" table insert : ").append(table)
-            .append("\n--\n");
-
-        //enable FK constraint
-        sql.append("\n/*!40000 ALTER TABLE `").append(table).append("` ENABLE KEYS */;\n");
-
-        return sql.toString();
-    }
-
-
-    /**
      * This is the entry function that'll
      * coordinate getTableInsertStatement() and getDataInsertStatement()
      * for every table in the database to generate a whole
@@ -503,20 +349,8 @@ public class DbExport {
     private String exportToSql() throws SQLException {
 
         StringBuilder sql = new StringBuilder();
-        sql.append("--");
-        sql.append("\n-- Date: ").append(new SimpleDateFormat("d-M-Y H:m:s").format(new java.util.Date()));
-        sql.append("\n--");
-
-        //these declarations are extracted from HeidiSQL
-        sql.append("\n\n/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;")
-            .append("\n/*!40101 SET NAMES utf8 */;")
-            .append("\n/*!50503 SET NAMES utf8mb4 */;")
-            .append("\n/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;")
-            .append("\n/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;");
-
-       // TablesResponse tablesResponse = Utility.getTables(database, stmt,parentTable,childTable);
-
-        //List<String> tables = tablesResponse.getTables();
+        sql.append("-- Date: ").append(new SimpleDateFormat("d-M-Y H:m:s").format(new java.util.Date()));
+        sql.append("\n");
         try {
             if(dbProperties.getCreateTableIfNotExisits()){
                 sql.append(getTableInsertStatement(dbProperties.getParentTable()));
@@ -528,11 +362,6 @@ public class DbExport {
         }catch (SQLException e){
             logger.error("Exception occurred while processing export for tables {} {} with error {} : ",dbProperties.getParentTable(),dbProperties.getChildTables().stream().collect(Collectors.joining(",")), e);
         }
-
-        sql.append("\n/*!40101 SET SQL_MODE=IFNULL(@OLD_SQL_MODE, '') */;")
-            .append("\n/*!40014 SET FOREIGN_KEY_CHECKS=IF(@OLD_FOREIGN_KEY_CHECKS IS NULL, 1, @OLD_FOREIGN_KEY_CHECKS) */;")
-            .append("\n/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;");
-
         this.generatedSql = sql.toString();
         return sql.toString();
     }
@@ -553,33 +382,13 @@ public class DbExport {
     public void export() throws IOException, SQLException, ClassNotFoundException {
         logger.debug("Initiating the export with the following Database properties {} \n",dbProperties.toString());
         //check if properties is set or not
-        if(!isValidateProperties()) {
+        if(!utility.isValidateProperties()) {
             logger.error("Invalid config properties: The config properties is missing important parameters: DB_NAME, DB_USERNAME and DB_PASSWORD");
             return;
         }
 
         //connect to the database
-        database = dbProperties.getName();
-        String jdbcURL = dbProperties.getJdbcUrl();
-        String driverName = dbProperties.getJdbcDriver();
-
-        //Connection connection;
-
-        if(jdbcURL.isEmpty()) {
-            connection = Utility.connect(dbProperties.getUsername(), dbProperties.getPassword(),
-                database, driverName);
-        }
-        else {
-            if (jdbcURL.contains("?")) {
-                database = jdbcURL.substring(jdbcURL.lastIndexOf("/") + 1, jdbcURL.indexOf("?"));
-            } else {
-                database = jdbcURL.substring(jdbcURL.lastIndexOf("/") + 1);
-            }
-            logger.debug("database name extracted from connection string: " + database);
-            connection = Utility.connectWithURL(dbProperties.getUsername(), dbProperties.getPassword(),
-                jdbcURL, driverName);
-        }
-
+        connection = utility.getConnection();
         stmt = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
 
         String sql = exportToSql();
@@ -635,8 +444,8 @@ public class DbExport {
      * @return String
      */
     public String getSqlFilename(){
-        return isSqlFileNamePropertySet() ? dbProperties.getSqlFileName() + ".sql" :
-            new SimpleDateFormat("d_M_Y_H_mm_ss").format(new Date()) + "_" + database + "_database_dump.sql";
+        return utility.isSqlFileNamePropertySet() ? dbProperties.getSqlFileName() + ".sql" :
+            new SimpleDateFormat("d_M_Y_H_mm_ss").format(new Date())  + "_database_dump.sql";
     }
 
     public String getSqlFileName() {

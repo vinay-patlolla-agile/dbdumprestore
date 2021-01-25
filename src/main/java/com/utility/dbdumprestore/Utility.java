@@ -1,17 +1,27 @@
 package com.utility.dbdumprestore;
 
 
+import com.utility.dbdumprestore.model.DbProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+@Component
 public class Utility {
 
         private static Logger logger = LoggerFactory.getLogger(Utility.class);
+
+        private final DbProperties dbProperties;
+
+        public Utility(DbProperties dbProperties){
+            this.dbProperties= dbProperties;
+        }
 
         static final String SQL_START_PATTERN = "-- start";
         static final String SQL_END_PATTERN = "-- end";
@@ -30,7 +40,7 @@ public class Utility {
          * @throws SQLException exception
          */
         static Connection connect(String username, String password, String database, String driverName) throws ClassNotFoundException, SQLException {
-        String url = "jdbc:mysql://localhost:3306/" + database + "?useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=UTC&useSSL=false";
+        String url = "jdbc:mysql://localhost:3306/" + database + "?useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=UTC&useSSL=false&allowPublicKeyRetrieval=true";
         String driver = (Objects.isNull(driverName) || driverName.isEmpty()) ? "com.mysql.cj.jdbc.Driver" : driverName;
         return doConnect(driver, url, username, password);
     }
@@ -145,4 +155,52 @@ public class Utility {
             safeDeleteSQL + "\n" +
             "\n" + Utility.SQL_END_PATTERN + "\n";
     }
+
+    /**
+     * This function will check if the required minimum
+     * properties are set for database connection and exporting
+     * password is excluded here because it's possible to have a mysql database
+     * user with no password
+     * @return true if all required properties are present and false if otherwise
+     */
+    public boolean isValidateProperties() {
+        return dbProperties != null &&
+            StringUtils.hasLength(dbProperties.getUsername()) &&
+            (StringUtils.hasLength(dbProperties.getName()) || StringUtils.hasLength(dbProperties.getJdbcUrl()));
+    }
+
+    /**
+     * This function will return true
+     * or false based on the availability
+     * or absence of a custom output sql
+     * file name
+     * @return bool
+     */
+    public boolean isSqlFileNamePropertySet(){
+        return dbProperties != null &&
+            StringUtils.hasLength(dbProperties.getSqlFileName());
+    }
+
+    public Connection getConnection() throws SQLException, ClassNotFoundException {
+        String database = dbProperties.getName();
+        String jdbcURL = dbProperties.getJdbcUrl();
+        String driverName = dbProperties.getJdbcDriver();
+
+        Connection connection = null;
+        if(jdbcURL.isEmpty()) {
+            connection = Utility.connect(dbProperties.getUsername(), dbProperties.getPassword(),
+                database, driverName);
+        }else {
+            if (jdbcURL.contains("?")) {
+                database = jdbcURL.substring(jdbcURL.lastIndexOf("/") + 1, jdbcURL.indexOf("?"));
+            } else {
+                database = jdbcURL.substring(jdbcURL.lastIndexOf("/") + 1);
+            }
+            logger.debug("database name extracted from connection string: " + database);
+            connection = Utility.connectWithURL(dbProperties.getUsername(), dbProperties.getPassword(),
+                jdbcURL, driverName);
+        }
+        return connection;
+    }
+
 }
