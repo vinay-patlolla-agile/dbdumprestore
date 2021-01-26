@@ -27,10 +27,6 @@ public class DbDelete {
 
     private Statement stmt;
     private String dirName = "DELETE_DUMP";
-    private String sqlFileName = "";
-    private String zipFileName = "";
-
-    private final String LOG_PREFIX = "DB-DELETE-EXPORT: ";
 
     private Logger logger = LoggerFactory.getLogger(getClass());
 
@@ -61,6 +57,7 @@ public class DbDelete {
         //create a temp dir to store the exported file for processing
         dirName = StringUtils.hasLength(dbProperties.getExportDir()) ? dbProperties.getExportDir() : dirName;
         File file = new File(dirName);
+        String LOG_PREFIX = "DB-DELETE-EXPORT: ";
         if(!file.exists()) {
             boolean res = file.mkdir();
             if(!res) {
@@ -77,7 +74,7 @@ public class DbDelete {
             }
         }
 
-        sqlFileName = getSqlFilename();
+        String sqlFileName = getSqlFilename();
         logger.debug("Writing the delete statements dump to a file at {} ",sqlFolder + "/" + sqlFileName);
         FileOutputStream outputStream = new FileOutputStream( sqlFolder + "/" + sqlFileName);
         outputStream.write(sql.getBytes());
@@ -85,11 +82,11 @@ public class DbDelete {
         logger.debug("Delete statements Dump has been successfully created at {} ",sqlFolder + "/" + sqlFileName);
 
         //zip the file
-        zipFileName = dirName + "/" + sqlFileName.replace(".sql", ".zip");
+        String zipFileName = dirName + "/" + sqlFileName.replace(".sql", ".zip");
         File generatedZipFile = new File(zipFileName);
-        logger.debug("Creating a zip file at {} ",zipFileName);
+        logger.debug("Creating a zip file at {} ", zipFileName);
         ZipUtil.pack(sqlFolder, generatedZipFile);
-        logger.debug("Zip file has been successfully created at {} ",zipFileName);
+        logger.debug("Zip file has been successfully created at {} ", zipFileName);
 
         return true;
 

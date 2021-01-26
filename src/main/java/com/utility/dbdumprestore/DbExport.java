@@ -34,39 +34,13 @@ public class DbExport {
     private Statement stmt;
 
     private Connection connection;
-    private String database;
     private String generatedSql = "";
     private Logger logger = LoggerFactory.getLogger(getClass());
     private final String LOG_PREFIX = "DB-Export: ";
     private String dirName = "DUMP";
     private String sqlFileName = "";
     private String zipFileName = "";
-    //private Properties properties;
     private File generatedZipFile;
-
-
-
-    /**
-     * @deprecated
-     * This is deprecated in favour of the same option available
-     * in the {@link Utility} class.
-     */
-    public static final String DROP_TABLES = "DROP_TABLES";
-
-
-    /**
-     * @deprecated
-     * This is deprecated in favour of the same option available
-     * in the {@link Utility} class.
-     */
-    public static final String DELETE_EXISTING_DATA = "DELETE_EXISTING_DATA";
-
-
-    public static final String JDBC_CONNECTION_STRING = "JDBC_CONNECTION_STRING";
-    public static final String JDBC_DRIVER_NAME = "JDBC_DRIVER_NAME";
-    public static final String SQL_FILE_NAME = "SQL_FILE_NAME";
-
-
 
     /**
      * This will generate the SQL statement

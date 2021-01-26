@@ -2,6 +2,7 @@ package com.utility.dbdumprestore;
 
 
 import com.utility.dbdumprestore.model.DbExportProperties;
+import com.utility.dbdumprestore.model.DbImportProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -18,9 +19,11 @@ public class Utility {
         private static Logger logger = LoggerFactory.getLogger(Utility.class);
 
         private final DbExportProperties dbProperties;
+        private final DbImportProperties dbImportProperties;
 
-        public Utility(DbExportProperties dbProperties){
+        public Utility(DbExportProperties dbProperties, DbImportProperties dbImportProperties){
             this.dbProperties= dbProperties;
+            this.dbImportProperties = dbImportProperties;
         }
 
         static final String SQL_START_PATTERN = "-- start";
@@ -170,6 +173,19 @@ public class Utility {
     }
 
     /**
+     * This function will check if the required minimum
+     * properties are set for database connection and importing
+     * password is excluded here because it's possible to have a mysql database
+     * user with no password
+     * @return true if all required properties are present and false if otherwise
+     */
+    public boolean isValidateImportProperties() {
+        return dbImportProperties != null &&
+            StringUtils.hasLength(dbImportProperties.getUsername()) &&
+            (StringUtils.hasLength(dbImportProperties.getDatabase()) || StringUtils.hasLength(dbImportProperties.getJdbcUrl()));
+    }
+
+    /**
      * This function will return true
      * or false based on the availability
      * or absence of a custom output sql
@@ -198,6 +214,28 @@ public class Utility {
             }
             logger.debug("database name extracted from connection string: " + database);
             connection = Utility.connectWithURL(dbProperties.getUsername(), dbProperties.getPassword(),
+                jdbcURL, driverName);
+        }
+        return connection;
+    }
+
+    public Connection getImportDbConnection() throws SQLException, ClassNotFoundException {
+        String database = dbImportProperties.getDatabase();
+        String jdbcURL = dbImportProperties.getJdbcUrl();
+        String driverName = dbImportProperties.getJdbcDriver();
+
+        Connection connection = null;
+        if(jdbcURL.isEmpty()) {
+            connection = Utility.connect(dbImportProperties.getUsername(), dbImportProperties.getPassword(),
+                database, driverName);
+        }else {
+            if (jdbcURL.contains("?")) {
+                database = jdbcURL.substring(jdbcURL.lastIndexOf("/") + 1, jdbcURL.indexOf("?"));
+            } else {
+                database = jdbcURL.substring(jdbcURL.lastIndexOf("/") + 1);
+            }
+            logger.debug("database name extracted from connection string: " + database);
+            connection = Utility.connectWithURL(dbImportProperties.getUsername(), dbImportProperties.getPassword(),
                 jdbcURL, driverName);
         }
         return connection;
