@@ -1,6 +1,7 @@
 package com.utility.dbdumprestore;
 
-import com.utility.dbdumprestore.model.DbProperties;
+import com.utility.dbdumprestore.model.DbExportProperties;
+import com.utility.dbdumprestore.model.DbImportProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
@@ -19,12 +20,13 @@ public class DbdumprestoreApplication {
 	public static void main(String[] args) {
 		ConfigurableApplicationContext configurableApplicationContext = SpringApplication.run(DbdumprestoreApplication.class, args);
 
-		DbProperties dbProperties = configurableApplicationContext.getBean(DbProperties.class);
+		DbExportProperties dbProperties = configurableApplicationContext.getBean(DbExportProperties.class);
+		DbImportProperties dbImportProperties = configurableApplicationContext.getBean(DbImportProperties.class);
 		Utility utility = configurableApplicationContext.getBean(Utility.class);
 		DbExport dbExport=new DbExport(dbProperties, utility);
 		DbDelete dbDelete=new DbDelete(dbProperties, utility);
 		Scanner scanner = new Scanner(System.in);
-		System.out.println("Please choose an option \n 1.Data backup \n 2.Generate Delete Statements \n Press q to Quit \n");
+		System.out.println("Please choose an option \n 1.Data backup \n 2.Generate Delete Statements \n 3.Import \n Press q to Quit \n");
 		String choice = scanner.next();
 
 		switch (choice){
@@ -48,6 +50,18 @@ public class DbdumprestoreApplication {
 					System.out.println("Class not found error "+cne);
 				}catch (SQLException sqle){
 					System.out.println("Error exporting "+sqle);
+				}
+				break;
+			case "3":
+				try {
+					DbStatementsExecute dbStatementsExecute=new DbStatementsExecute(dbImportProperties, utility);
+					dbStatementsExecute.importDatabase();
+				} catch (IOException e){
+					System.out.println("IO error "+e);
+				}catch (ClassNotFoundException cne){
+					System.out.println("Class not found error "+cne);
+				}catch (SQLException sqle){
+					System.out.println("Error executing the sql file  "+sqle);
 				}
 				break;
 			case "q":

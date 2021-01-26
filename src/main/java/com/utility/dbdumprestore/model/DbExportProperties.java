@@ -7,7 +7,7 @@ import java.util.List;
 
 @Configuration
 @ConfigurationProperties(prefix = "db")
-public class DbProperties {
+public class DbExportProperties {
     String name;
     String username;
     String password;
@@ -132,7 +132,7 @@ public class DbProperties {
         if (o == null || getClass() != o.getClass())
             return false;
 
-        DbProperties that = (DbProperties) o;
+        DbExportProperties that = (DbExportProperties) o;
 
         if (name != null ? !name.equals(that.name) : that.name != null)
             return false;

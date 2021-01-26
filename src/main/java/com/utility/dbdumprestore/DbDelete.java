@@ -1,7 +1,7 @@
 package com.utility.dbdumprestore;
 
 
-import com.utility.dbdumprestore.model.DbProperties;
+import com.utility.dbdumprestore.model.DbExportProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -15,13 +15,11 @@ import java.sql.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
-import java.util.Objects;
-import java.util.stream.Collectors;
 
 @Component
 public class DbDelete {
 
-    private DbProperties dbProperties;
+    private DbExportProperties dbProperties;
 
     private Utility utility;
 
@@ -36,7 +34,7 @@ public class DbDelete {
 
     private Logger logger = LoggerFactory.getLogger(getClass());
 
-    public DbDelete(DbProperties dbProperties, Utility utility){
+    public DbDelete(DbExportProperties dbProperties, Utility utility){
         this.dbProperties = dbProperties;
         this.utility = utility;
     }

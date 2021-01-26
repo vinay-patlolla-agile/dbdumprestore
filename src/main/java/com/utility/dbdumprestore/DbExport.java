@@ -1,7 +1,7 @@
 package com.utility.dbdumprestore;
 
 
-import com.utility.dbdumprestore.model.DbProperties;
+import com.utility.dbdumprestore.model.DbExportProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -21,13 +21,13 @@ import java.util.stream.Collectors;
 @Component
 public class DbExport {
 
-    private final DbProperties dbProperties;
+    private final DbExportProperties dbProperties;
 
     private final Utility utility;
 
 
 
-    public DbExport(DbProperties dbProperties, Utility utility){
+    public DbExport(DbExportProperties dbProperties, Utility utility){
         this.dbProperties = dbProperties;
         this.utility = utility;
     }
