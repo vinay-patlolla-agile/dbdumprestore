@@ -186,7 +186,7 @@ public class DbDelete {
         ResultSetMetaData metaData = parentResultSet.getMetaData();
         int columnCount = metaData.getColumnCount();
         int relatedColumnType = Types.VARCHAR;
-        StringBuilder parentTableSql = new StringBuilder();
+
 
         //generate the column names that are present
         //in the returned result set
@@ -203,6 +203,7 @@ public class DbDelete {
             recordCount++;
             sql.append("-- Record ").append(recordCount);
             sql.append("\n--\n");
+            StringBuilder parentTableSql = new StringBuilder();
             parentTableSql.append("DELETE FROM `").append(parentTable).append("` WHERE `").append(relatedColumn).append("`= ");
 
             String relatedColumnValue = null;
