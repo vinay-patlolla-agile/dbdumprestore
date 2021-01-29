@@ -114,7 +114,8 @@ public class DbExport {
      * @return String generated SQL insert
      * @throws SQLException exception
      */
-    private String getDataInsertStatement(String parentTable,List<String> childTables,String relatedColumn,String fromCreatedDateTime,String toCreatedDateTime) throws SQLException {
+    private void generateInsertStatements(String parentTable,List<String> childTables,String relatedColumn,String fromCreatedDateTime,String toCreatedDateTime)
+        throws SQLException, IOException {
 
         StringBuilder sql = new StringBuilder();
         ResultSet parentResultSet = null;
@@ -128,16 +129,8 @@ public class DbExport {
 
         //there are no records in the parent table just return empty string
         if(rowCount <= 0) {
-            logger.debug("No records found for the table ",parentTable);
-            return sql.toString();
+            logger.debug("No records found for the table {} ",parentTable);
         }
-
-        //temporarily disable foreign key constraint
-        sql.append("\n/*!40000 ALTER TABLE `").append(parentTable).append("` DISABLE KEYS */;\n");
-        childTables.stream().forEach(table->{
-            sql.append("\n/*!40000 ALTER TABLE `").append(table).append("` DISABLE KEYS */;\n");
-        });
-        //sql.append("\n/*!40000 ALTER TABLE `").append(childTable).append("` DISABLE KEYS */;\n");
 
         ResultSetMetaData metaData = parentResultSet.getMetaData();
         int columnCount = metaData.getColumnCount();
@@ -158,8 +151,12 @@ public class DbExport {
         //now we're going to build the values for data insertion
         parentResultSet.beforeFirst();
         int recordCount = 0;
+        int initialRecordCount = 1;
+        int transactionCount = recordCount;
+        int maxTransactionsPerFile = dbProperties.getTransactionsPerFile() == 0 ? rowCount : dbProperties.getTransactionsPerFile();
         while(parentResultSet.next()) {
             recordCount++;
+            transactionCount++;
             sql.append("-- Record ").append(recordCount);
             sql.append("\n--\n");
             sql.append("INSERT INTO `").append(parentTable).append("`(");
@@ -269,15 +266,51 @@ public class DbExport {
                 childTableResultSet.close();
             }
             sql.append("-- Record ").append(recordCount).append(" Ends --");
+            if(transactionCount == maxTransactionsPerFile){
+                writeToSqlFile(sql.toString(), initialRecordCount +"-"+recordCount);
+                initialRecordCount = recordCount;
+                transactionCount = 0;
+                sql = new StringBuilder();
+            }
         }
-        sql.append("\n--\n");
-        //enable FK constraint
-        sql.append("\n/*!40000 ALTER TABLE `").append(parentTable).append("` ENABLE KEYS */;\n");
-        childTables.stream().forEach(table->{
-            sql.append("\n/*!40000 ALTER TABLE `").append(table).append("` ENABLE KEYS */;\n");
-        });
+        //sql.append("\n--\n");
+        //return sql.toString();
+    }
 
-        return sql.toString();
+    private void writeToSqlFile(String sql,String fileNameSuffix) throws IOException {
+        //create a temp dir to store the exported file for processing
+        dirName = StringUtils.hasLength(dbProperties.getExportDir()) ? dbProperties.getExportDir() : dirName;
+        File file = new File(dirName);
+        if(!file.exists()) {
+            boolean res = file.mkdir();
+            if(!res) {
+                throw new IOException(LOG_PREFIX + ": Unable to create temp dir: " + file.getAbsolutePath());
+            }
+        }
+
+        //write the sql file out
+        File sqlFolder = new File(dirName + "/sql");
+        if(!sqlFolder.exists()) {
+            boolean res = sqlFolder.mkdir();
+            if(!res) {
+                throw new IOException(LOG_PREFIX + ": Unable to create temp dir: " + file.getAbsolutePath());
+            }
+        }
+
+        sqlFileName = getSqlFilename();
+        sqlFileName = StringUtils.hasLength(fileNameSuffix) ?sqlFileName+"_"+fileNameSuffix+".sql": sqlFileName+".sql";
+        logger.debug("Writing the dump to a file at {} ",sqlFolder + "/" + sqlFileName);
+        FileOutputStream outputStream = new FileOutputStream( sqlFolder + "/" + sqlFileName);
+        outputStream.write(sql.getBytes());
+        outputStream.close();
+        logger.debug("Dump has been successfully created at {} ",sqlFolder + "/" + sqlFileName);
+
+        //zip the file
+        zipFileName = dirName + "/" + sqlFileName.replace(".sql", ".zip");
+        generatedZipFile = new File(zipFileName);
+        logger.debug("Creating a zip file at {} ",zipFileName);
+        ZipUtil.pack(sqlFolder, generatedZipFile);
+        logger.debug("Zip file has been successfully created at {} ",zipFileName);
     }
 
 
@@ -312,36 +345,6 @@ public class DbExport {
         return  stmt.executeQuery(query);
     }
 
-    /**
-     * This is the entry function that'll
-     * coordinate getTableInsertStatement() and getDataInsertStatement()
-     * for every table in the database to generate a whole
-     * script of SQL
-     * @return String
-     * @throws SQLException exception
-     */
-    private String exportToSql() throws SQLException {
-
-        StringBuilder sql = new StringBuilder();
-        sql.append("-- Date: ").append(new SimpleDateFormat("d-M-Y H:m:s").format(new java.util.Date()));
-        sql.append("\n");
-        try {
-            if(dbProperties.getCreateTableIfNotExisits()){
-                sql.append(getTableInsertStatement(dbProperties.getParentTable()));
-                for (String childTable:dbProperties.getChildTables()) {
-                    sql.append(getTableInsertStatement(childTable));
-                }
-            }
-            sql.append(getDataInsertStatement(dbProperties.getParentTable(),dbProperties.getChildTables(),dbProperties.getRelatedColumn(),dbProperties.getFromCreatedDateTime(),dbProperties.getToCreatedDateTime()));
-        }catch (SQLException e){
-            logger.error("Exception occurred while processing export for tables {} {} with error {} : ",dbProperties.getParentTable(),dbProperties.getChildTables().stream().collect(Collectors.joining(",")), e);
-        }
-        this.generatedSql = sql.toString();
-        return sql.toString();
-    }
-
-
-
 
     /**
      * This is the entry point for exporting
@@ -365,7 +368,7 @@ public class DbExport {
         connection = utility.getConnection();
         stmt = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
 
-        String sql = exportToSql();
+        generateInsertStatements(dbProperties.getParentTable(),dbProperties.getChildTables(),dbProperties.getRelatedColumn(),dbProperties.getFromCreatedDateTime(),dbProperties.getToCreatedDateTime());
 
         //close the statement
         stmt.close();
@@ -374,42 +377,9 @@ public class DbExport {
         connection.close();
 
         logger.debug("Closing the connection ");
-        //create a temp dir to store the exported file for processing
-        dirName = StringUtils.hasLength(dbProperties.getExportDir()) ? dbProperties.getExportDir() : dirName;
-        File file = new File(dirName);
-        if(!file.exists()) {
-            boolean res = file.mkdir();
-            if(!res) {
-                throw new IOException(LOG_PREFIX + ": Unable to create temp dir: " + file.getAbsolutePath());
-            }
-        }
-
-        //write the sql file out
-        File sqlFolder = new File(dirName + "/sql");
-        if(!sqlFolder.exists()) {
-            boolean res = sqlFolder.mkdir();
-            if(!res) {
-                throw new IOException(LOG_PREFIX + ": Unable to create temp dir: " + file.getAbsolutePath());
-            }
-        }
-
-        sqlFileName = getSqlFilename();
-        logger.debug("Writing the dump to a file at {} ",sqlFolder + "/" + sqlFileName);
-        FileOutputStream outputStream = new FileOutputStream( sqlFolder + "/" + sqlFileName);
-        outputStream.write(sql.getBytes());
-        outputStream.close();
-        logger.debug("Dump has been successfully created at {} ",sqlFolder + "/" + sqlFileName);
-
-        //zip the file
-        zipFileName = dirName + "/" + sqlFileName.replace(".sql", ".zip");
-        generatedZipFile = new File(zipFileName);
-        logger.debug("Creating a zip file at {} ",zipFileName);
-        ZipUtil.pack(sqlFolder, generatedZipFile);
-        logger.debug("Zip file has been successfully created at {} ",zipFileName);
-
+        logger.debug("Export has been completed successfully");
 
     }
-
 
 
     /**
@@ -418,8 +388,8 @@ public class DbExport {
      * @return String
      */
     public String getSqlFilename(){
-        return utility.isSqlFileNamePropertySet() ? dbProperties.getSqlFileName() + ".sql" :
-            new SimpleDateFormat("d_M_Y_H_mm_ss").format(new Date())  + "_database_dump.sql";
+        return utility.isSqlFileNamePropertySet() ? dbProperties.getSqlFileName():
+            new SimpleDateFormat("d_M_Y_H_mm_ss").format(new Date())  + "_database_dump";
     }
 
     public String getSqlFileName() {

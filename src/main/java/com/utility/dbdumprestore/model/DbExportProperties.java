@@ -18,6 +18,7 @@ public class DbExportProperties {
     String relatedColumn;
     String exportDir;
     String sqlFileName;
+    int transactionsPerFile;
     Boolean createTableIfNotExisits;
     String fromCreatedDateTime;
     String toCreatedDateTime;
@@ -102,6 +103,14 @@ public class DbExportProperties {
         this.sqlFileName = sqlFileName;
     }
 
+    public int getTransactionsPerFile() {
+        return transactionsPerFile;
+    }
+
+    public void setTransactionsPerFile(int transactionsPerFile) {
+        this.transactionsPerFile = transactionsPerFile;
+    }
+
     public Boolean getCreateTableIfNotExisits() {
         return createTableIfNotExisits;
     }
@@ -134,6 +143,8 @@ public class DbExportProperties {
 
         DbExportProperties that = (DbExportProperties) o;
 
+        if (transactionsPerFile != that.transactionsPerFile)
+            return false;
         if (name != null ? !name.equals(that.name) : that.name != null)
             return false;
         if (username != null ? !username.equals(that.username) : that.username != null)
@@ -180,6 +191,7 @@ public class DbExportProperties {
         result = 31 * result + (relatedColumn != null ? relatedColumn.hashCode() : 0);
         result = 31 * result + (exportDir != null ? exportDir.hashCode() : 0);
         result = 31 * result + (sqlFileName != null ? sqlFileName.hashCode() : 0);
+        result = 31 * result + transactionsPerFile;
         result = 31 * result + (createTableIfNotExisits != null ?
             createTableIfNotExisits.hashCode() :
             0);
@@ -189,12 +201,13 @@ public class DbExportProperties {
     }
 
     @Override public String toString() {
-        return "DbProperties{" + "name='" + name + '\'' + ", username='" + username + '\''
+        return "DbExportProperties{" + "name='" + name + '\'' + ", username='" + username + '\''
             + ", password='" + password + '\'' + ", jdbcUrl='" + jdbcUrl + '\'' + ", jdbcDriver='"
             + jdbcDriver + '\'' + ", parentTable='" + parentTable + '\'' + ", childTables="
             + childTables + ", relatedColumn='" + relatedColumn + '\'' + ", exportDir='" + exportDir
-            + '\'' + ", sqlFileName='" + sqlFileName + '\'' + ", createTableIfNotExisits="
-            + createTableIfNotExisits + ", fromCreatedDateTime='" + fromCreatedDateTime + '\''
-            + ", toCreatedDateTime='" + toCreatedDateTime + '\'' + '}';
+            + '\'' + ", sqlFileName='" + sqlFileName + '\'' + ", transactionsPerFile="
+            + transactionsPerFile + ", createTableIfNotExisits=" + createTableIfNotExisits
+            + ", fromCreatedDateTime='" + fromCreatedDateTime + '\'' + ", toCreatedDateTime='"
+            + toCreatedDateTime + '\'' + '}';
     }
 }
