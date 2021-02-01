@@ -273,6 +273,9 @@ public class DbExport {
                 sql = new StringBuilder();
             }
         }
+        if(StringUtils.hasLength(sql.toString())){
+            writeToSqlFile(sql.toString(), initialRecordCount +"-"+recordCount);
+        }
         //sql.append("\n--\n");
         //return sql.toString();
     }
