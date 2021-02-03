@@ -41,6 +41,7 @@ public class DbExport {
     private String sqlFileName = "";
     private String zipFileName = "";
     private File generatedZipFile;
+    private File sqlFolder;
 
     /**
      * This will generate the SQL statement
@@ -132,6 +133,8 @@ public class DbExport {
             logger.debug("No records found for the table {} ",parentTable);
         }
 
+        createExportDirIfNotExists();
+
         ResultSetMetaData metaData = parentResultSet.getMetaData();
         int columnCount = metaData.getColumnCount();
         int relatedColumnType = Types.VARCHAR;
@@ -169,8 +172,6 @@ public class DbExport {
 
                 int columnType = metaData.getColumnType(i + 1);
                 int columnIndex = i + 1;
-
-
                 //this is the part where the values are processed based on their type
                 if(Objects.isNull(parentResultSet.getObject(columnIndex))) {
                     sql.append("").append(parentResultSet.getObject(columnIndex)).append(", ");
@@ -266,22 +267,23 @@ public class DbExport {
                 childTableResultSet.close();
             }
             sql.append("-- Record ").append(recordCount).append(" Ends --");
+            writeToSqlFile(sql.toString(), initialRecordCount +"-"+maxTransactionsPerFile);
+            sql = new StringBuilder();
             if(transactionCount == maxTransactionsPerFile){
-                writeToSqlFile(sql.toString(), initialRecordCount +"-"+recordCount);
+                logger.debug("Dump file has been successfully created at {} ",sqlFolder + "/" + sqlFileName);
+                compressSqlFile();
+                //writeToSqlFile(sql.toString(), initialRecordCount +"-"+recordCount);
                 initialRecordCount = recordCount;
                 transactionCount = 0;
                 sql = new StringBuilder();
             }
         }
-        if(StringUtils.hasLength(sql.toString())){
-            writeToSqlFile(sql.toString(), initialRecordCount +"-"+recordCount);
-        }
-        //sql.append("\n--\n");
-        //return sql.toString();
+        /*if(StringUtils.hasLength(sql.toString())){
+            writeToSqlFile(sql.toString(), initialRecordCount +"-"+maxTransactionsPerFile);
+        }*/
     }
 
-    private void writeToSqlFile(String sql,String fileNameSuffix) throws IOException {
-        //create a temp dir to store the exported file for processing
+    private void createExportDirIfNotExists() throws IOException {
         dirName = StringUtils.hasLength(dbProperties.getExportDir()) ? dbProperties.getExportDir() : dirName;
         File file = new File(dirName);
         if(!file.exists()) {
@@ -292,28 +294,33 @@ public class DbExport {
         }
 
         //write the sql file out
-        File sqlFolder = new File(dirName + "/sql");
+        sqlFolder = new File(dirName + "/sql");
         if(!sqlFolder.exists()) {
             boolean res = sqlFolder.mkdir();
             if(!res) {
                 throw new IOException(LOG_PREFIX + ": Unable to create temp dir: " + file.getAbsolutePath());
             }
         }
+    }
 
+    private void writeToSqlFile(String sql,String fileNameSuffix) throws IOException {
         sqlFileName = getSqlFilename();
         sqlFileName = StringUtils.hasLength(fileNameSuffix) ?sqlFileName+"_"+fileNameSuffix+".sql": sqlFileName+".sql";
-        logger.debug("Writing the dump to a file at {} ",sqlFolder + "/" + sqlFileName);
-        FileOutputStream outputStream = new FileOutputStream( sqlFolder + "/" + sqlFileName);
-        outputStream.write(sql.getBytes());
-        outputStream.close();
-        logger.debug("Dump has been successfully created at {} ",sqlFolder + "/" + sqlFileName);
+        //logger.debug("Writing the sql to  {} ",sqlFolder + "/" + sqlFileName);
+        try (FileOutputStream outputStream = new FileOutputStream(sqlFolder + "/" + sqlFileName,true)) {
+            outputStream.write(sql.getBytes());
+            outputStream.close();
+        }
+    }
 
-        //zip the file
+    private void compressSqlFile() throws IOException {
         zipFileName = dirName + "/" + sqlFileName.replace(".sql", ".zip");
+        File sqlFolder = new File(dirName + "/sql");
         generatedZipFile = new File(zipFileName);
         logger.debug("Creating a zip file at {} ",zipFileName);
         ZipUtil.pack(sqlFolder, generatedZipFile);
         logger.debug("Zip file has been successfully created at {} ",zipFileName);
+
     }
 
 
