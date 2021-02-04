@@ -38,12 +38,8 @@ public class DbdumprestoreApplication {
 			case "1":
 				try {
 					dbExport.export();
-				} catch (IOException e){
+				} catch (Exception e){
 					System.out.println("IO error "+e);
-				}catch (ClassNotFoundException cne){
-					System.out.println("Class not found error "+cne);
-				}catch (SQLException sqle){
-					System.out.println("Error exporting "+sqle);
 				}
 				break;
 			case "2":

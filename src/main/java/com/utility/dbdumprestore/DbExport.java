@@ -2,9 +2,11 @@ package com.utility.dbdumprestore;
 
 
 import com.utility.dbdumprestore.model.DbExportProperties;
+import org.apache.commons.dbutils.DbUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StopWatch;
 import org.springframework.util.StringUtils;
 import org.zeroturnaround.zip.ZipUtil;
 
@@ -31,9 +33,7 @@ public class DbExport {
         this.dbProperties = dbProperties;
         this.utility = utility;
     }
-    private Statement stmt;
 
-    private Connection connection;
     private String generatedSql = "";
     private Logger logger = LoggerFactory.getLogger(getClass());
     private final String LOG_PREFIX = "DB-Export: ";
@@ -43,69 +43,8 @@ public class DbExport {
     private File generatedZipFile;
     private File sqlFolder;
 
-    /**
-     * This will generate the SQL statement
-     * for creating the table supplied in the
-     * method signature
-     * @param table the table concerned
-     * @return String
-     * @throws SQLException exception
-     */
-    private String getTableInsertStatement(String table) throws SQLException {
-
-        StringBuilder sql = new StringBuilder();
-        ResultSet rs;
-        boolean addIfNotExists = dbProperties.getCreateTableIfNotExisits() ? true:false;
 
 
-        if(table != null && !table.isEmpty()){
-            rs = stmt.executeQuery("SHOW CREATE TABLE " + "`" + table + "`;");
-            while ( rs.next() ) {
-                String qtbl = rs.getString(1);
-                String query = rs.getString(2);
-                if(addIfNotExists) {
-                    query = query.trim().replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS");
-                }
-
-                sql.append(query).append(";\n\n");
-            }
-        }
-
-        return sql.toString();
-    }
-
-    /**
-     * this will generate the SQL statement to re-create
-     * the supplied view
-     * @param view the name of the View
-     * @return an SQL to create the view
-     * @throws SQLException on error
-     */
-    private String getCreateViewStatement(String view) throws SQLException {
-
-        StringBuilder sql = new StringBuilder();
-        ResultSet rs;
-
-        if(view != null && !view.isEmpty()) {
-            rs = stmt.executeQuery("SHOW CREATE VIEW " + "`" + view + "`;");
-            while ( rs.next() ) {
-                String viewName = rs.getString(1);
-                String viewQuery = rs.getString(2);
-                sql.append("\n\n--");
-                sql.append("\n").append(Utility.SQL_START_PATTERN).append("  view dump : ").append(view);
-                sql.append("\n--\n\n");
-
-                String finalQuery = "CREATE OR REPLACE VIEW `" + viewName + "` " + (viewQuery.substring(viewQuery.indexOf("AS")).trim());
-                sql.append(finalQuery).append(";\n\n");
-            }
-
-            sql.append("\n\n--");
-            sql.append("\n").append(Utility.SQL_END_PATTERN).append("  view dump : ").append(view);
-            sql.append("\n--\n\n");
-        }
-
-        return sql.toString();
-    }
 
 
     /**
@@ -116,171 +55,191 @@ public class DbExport {
      * @throws SQLException exception
      */
     private void generateInsertStatements(String parentTable,List<String> childTables,String relatedColumn,String fromCreatedDateTime,String toCreatedDateTime)
-        throws SQLException, IOException {
+        throws SQLException, IOException, ClassNotFoundException {
 
         StringBuilder sql = new StringBuilder();
+        String[] insertColumnsStore=new String[childTables.size()];
         ResultSet parentResultSet = null;
-        String query = null;
+        ResultSet childTableResultSet = null;
+        Connection connection = null;
+        Statement stmt = null;
+        String queryParentTable =getQuery(parentTable,fromCreatedDateTime,toCreatedDateTime);
 
-        parentResultSet = getResultSetFromParentTable(parentTable,fromCreatedDateTime,toCreatedDateTime);
+        try {
 
-        //move to the last row to get max rows returned
-        parentResultSet.last();
-        int rowCount = parentResultSet.getRow();
+            connection = utility.getConnection();
+            stmt = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+            StopWatch parentQueryExecutionWatch = new StopWatch();
+            parentQueryExecutionWatch.start();
+            parentResultSet = stmt.executeQuery(queryParentTable);
+            parentQueryExecutionWatch.stop();
+            logger.debug("Execution time for the query on parent table in seconds {} ",parentQueryExecutionWatch.getTotalTimeSeconds());
 
-        //there are no records in the parent table just return empty string
-        if(rowCount <= 0) {
-            logger.debug("No records found for the table {} ",parentTable);
-        }
+            //move to the last row to get max rows returned
+            parentResultSet.last();
+            int rowCount = parentResultSet.getRow();
 
-        createExportDirIfNotExists();
-
-        ResultSetMetaData metaData = parentResultSet.getMetaData();
-        int columnCount = metaData.getColumnCount();
-        int relatedColumnType = Types.VARCHAR;
-        StringBuilder columns = new StringBuilder();
-
-        //generate the column names that are present
-        //in the returned result set
-        //at this point the insert is INSERT INTO (`col1`, `col2`, ...)
-        for(int i = 0; i < columnCount; i++) {
-            if(relatedColumn.equalsIgnoreCase(metaData.getColumnName( i + 1))){
-                relatedColumnType = metaData.getColumnType(i + 1);
+            //there are no records in the parent table just return empty string
+            if(rowCount <= 0) {
+                logger.debug("No records found for the table {} ",parentTable);
             }
-            columns.append("`")
-                .append(metaData.getColumnName( i + 1))
-                .append("`, ");
-        }
-        //now we're going to build the values for data insertion
-        parentResultSet.beforeFirst();
-        int recordCount = 0;
-        int initialRecordCount = 1;
-        int transactionCount = recordCount;
-        int maxTransactionsPerFile = dbProperties.getTransactionsPerFile() == 0 ? rowCount : dbProperties.getTransactionsPerFile();
-        while(parentResultSet.next()) {
-            recordCount++;
-            transactionCount++;
-            sql.append("-- Record ").append(recordCount);
-            sql.append("\n--\n");
-            sql.append("INSERT INTO `").append(parentTable).append("`(");
-            sql.append(columns.toString());
-            //remove the last whitespace and comma
-            sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1).append(") VALUES \n");
-            sql.append("(");
-            String relatedColumnValue = null;
+            createExportDirIfNotExists();
+            ResultSetMetaData metaData = parentResultSet.getMetaData();
+            int columnCount = metaData.getColumnCount();
+            int relatedColumnType = Types.VARCHAR;
+            StringBuilder columns = new StringBuilder();
+
+            //generate the column names that are present
+            //in the returned result set
+            //at this point the insert is INSERT INTO (`col1`, `col2`, ...)
             for(int i = 0; i < columnCount; i++) {
-
-                int columnType = metaData.getColumnType(i + 1);
-                int columnIndex = i + 1;
-                //this is the part where the values are processed based on their type
-                if(Objects.isNull(parentResultSet.getObject(columnIndex))) {
-                    sql.append("").append(parentResultSet.getObject(columnIndex)).append(", ");
+                if(relatedColumn.equalsIgnoreCase(metaData.getColumnName( i + 1))){
+                    relatedColumnType = metaData.getColumnType(i + 1);
                 }
-                else if( columnType == Types.INTEGER || columnType == Types.TINYINT || columnType == Types.BIT) {
-                    sql.append(parentResultSet.getInt(columnIndex)).append(", ");
-                }
-                else {
-
-                    String val = parentResultSet.getString(columnIndex);
-                    //escape the single quotes that might be in the value
-                    val = val.replace("'", "\\'");
-
-                    sql.append("'").append(val).append("', ");
-                }
-
-                if((relatedColumnType == Types.INTEGER || relatedColumnType == Types.TINYINT || relatedColumnType == Types.BIT) && relatedColumn.equalsIgnoreCase(metaData.getColumnName(i + 1))){
-                    relatedColumnValue = String.valueOf(parentResultSet.getInt(columnIndex));
-                }else if(relatedColumnType == Types.VARCHAR && relatedColumn.equalsIgnoreCase(metaData.getColumnName(i + 1)) ){
-                    relatedColumnValue = parentResultSet.getString(columnIndex);
-                }
+                columns.append("`")
+                    .append(metaData.getColumnName( i + 1))
+                    .append("`, ");
             }
+            //now we're going to build the values for data insertion
+            parentResultSet.beforeFirst();
+            int recordCount = 0;
+            int initialRecordCount = 1;
+            int transactionCount = recordCount;
+            int maxTransactionsPerFile = dbProperties.getTransactionsPerFile() == 0 ? rowCount : dbProperties.getTransactionsPerFile();
+            while(parentResultSet.next()) {
+                recordCount++;
+                transactionCount++;
+                sql.append("-- Record ").append(recordCount);
+                sql.append("\n--\n");
+                sql.append("INSERT INTO `").append(parentTable).append("`(").append(columns.toString());
+                //remove the last whitespace and comma
+                sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1).append(") VALUES \n");
+                sql.append("(");
+                String relatedColumnValue = null;
+                for(int i = 0; i < columnCount; i++) {
 
-            //now that we're done with a row
-            //let's remove the last whitespace and comma
-            sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1);
-
-            //if this is the last row, just append a closing
-            //parenthesis otherwise append a closing parenthesis and a comma
-            //for the next set of values
-            sql.append(");");
-            sql.append("\n");
-            //End of processing a Single Parent row
-
-            for (String childTable:childTables) {
-
-                ResultSet childTableResultSet = getResultSetFromChildTable(childTable,relatedColumn,relatedColumnValue);
-
-                ResultSetMetaData childTableMetaData = childTableResultSet.getMetaData();
-                int childTableColumnCount = childTableMetaData.getColumnCount();
-                StringBuilder childTableColumns = new StringBuilder();
-                //generate the column names that are present
-                //in the returned result set
-                //at this point the insert is INSERT INTO (`col1`, `col2`, ...)
-                for(int i = 0; i < childTableColumnCount; i++) {
-                    childTableColumns.append("`")
-                        .append(childTableMetaData.getColumnName( i + 1))
-                        .append("`, ");
-                }
-
-                //now we're going to build the values for data insertion
-                childTableResultSet.beforeFirst();
-
-                while(childTableResultSet.next()) {
-                    sql.append("INSERT INTO `").append(childTable).append("`(");
-
-                    sql.append(childTableColumns.toString());
-                    //remove the last whitespace and comma
-                    sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1).append(") VALUES \n");
-
-                    sql.append("(");
-                    for (int i = 0; i < childTableColumnCount; i++) {
-
-                        int columnType = childTableMetaData.getColumnType(i + 1);
-                        int columnIndex = i + 1;
-
-                        //this is the part where the values are processed based on their type
-                        if (Objects.isNull(childTableResultSet.getObject(columnIndex))) {
-                            sql.append("").append(childTableResultSet.getObject(columnIndex)).append(", ");
-                        } else if (columnType == Types.INTEGER || columnType == Types.TINYINT
-                            || columnType == Types.BIT) {
-                            sql.append(childTableResultSet.getInt(columnIndex)).append(", ");
-                        } else {
-
-                            String val = childTableResultSet.getString(columnIndex);
-                            //escape the single quotes that might be in the value
-                            val = val.replace("'", "\\'");
-
-                            sql.append("'").append(val).append("', ");
-                        }
+                    int columnType = metaData.getColumnType(i + 1);
+                    int columnIndex = i + 1;
+                    //this is the part where the values are processed based on their type
+                    if(Objects.isNull(parentResultSet.getObject(columnIndex))) {
+                        sql.append("").append(parentResultSet.getObject(columnIndex)).append(", ");
+                    }
+                    else if( columnType == Types.INTEGER || columnType == Types.TINYINT || columnType == Types.BIT) {
+                        sql.append(parentResultSet.getInt(columnIndex)).append(", ");
+                    }
+                    else {
+                        String val = parentResultSet.getString(columnIndex);
+                        //escape the single quotes that might be in the value
+                        val = val.replace("'", "\\'");
+                        sql.append("'").append(val).append("', ");
                     }
 
-                    //now that we're done with a row
-                    //let's remove the last whitespace and comma
-                    sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1);
-
-                    //if this is the last row, just append a closing
-                    //parenthesis otherwise append a closing parenthesis and a comma
-                    //for the next set of values
-                    sql.append(");");
-                    sql.append("\n");
+                    if((relatedColumnType == Types.INTEGER || relatedColumnType == Types.TINYINT || relatedColumnType == Types.BIT) && relatedColumn.equalsIgnoreCase(metaData.getColumnName(i + 1))){
+                        relatedColumnValue = String.valueOf(parentResultSet.getInt(columnIndex));
+                    }else if(relatedColumnType == Types.VARCHAR && relatedColumn.equalsIgnoreCase(metaData.getColumnName(i + 1)) ){
+                        relatedColumnValue = parentResultSet.getString(columnIndex);
+                    }
                 }
-                childTableResultSet.close();
-            }
-            sql.append("-- Record ").append(recordCount).append(" Ends --");
-            writeToSqlFile(sql.toString(), initialRecordCount +"-"+maxTransactionsPerFile);
-            sql = new StringBuilder();
-            if(transactionCount == maxTransactionsPerFile){
-                logger.debug("Dump file has been successfully created at {} ",sqlFolder + "/" + sqlFileName);
-                compressSqlFile();
-                //writeToSqlFile(sql.toString(), initialRecordCount +"-"+recordCount);
-                initialRecordCount = recordCount;
-                transactionCount = 0;
+
+                //now that we're done with a row
+                //let's remove the last whitespace and comma
+                sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1);
+
+                //if this is the last row, just append a closing
+                //parenthesis otherwise append a closing parenthesis and a comma
+                //for the next set of values
+                sql.append(");");
+                sql.append("\n");
+                //End of processing a Single Parent row
+
+                int childTableIndex = 0;
+                for (String childTable:childTables) {
+                    stmt = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+                    String queryForChildTable = getQueryForChildTable(childTable,relatedColumn,relatedColumnValue);
+                    childTableResultSet = stmt.executeQuery(queryForChildTable);
+
+                    ResultSetMetaData childTableMetaData = childTableResultSet.getMetaData();
+                    int childTableColumnCount = childTableMetaData.getColumnCount();
+
+                    if(! StringUtils.hasLength(insertColumnsStore[childTableIndex])){
+                        StringBuilder childTableColumns = new StringBuilder();
+                        //generate the column names that are present
+                        //in the returned result set
+                        //at this point the insert is INSERT INTO (`col1`, `col2`, ...)
+                        for(int i = 0; i < childTableColumnCount; i++) {
+                            childTableColumns.append("`")
+                                .append(childTableMetaData.getColumnName( i + 1))
+                                .append("`, ");
+                        }
+                        insertColumnsStore[childTableIndex] = childTableColumns.toString();
+                    }
+
+                    String columnsFromStore = insertColumnsStore[childTableIndex];
+                    //now we're going to build the values for data insertion
+                    childTableResultSet.beforeFirst();
+
+                    while(childTableResultSet.next()) {
+                        sql.append("INSERT INTO `").append(childTable).append("`(").append(columnsFromStore.toString());
+                        //remove the last whitespace and comma
+                        sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1).append(") VALUES \n").append("(");
+
+                        for (int i = 0; i < childTableColumnCount; i++) {
+
+                            int columnType = childTableMetaData.getColumnType(i + 1);
+                            int columnIndex = i + 1;
+
+                            //this is the part where the values are processed based on their type
+                            if (Objects.isNull(childTableResultSet.getObject(columnIndex))) {
+                                sql.append("").append(childTableResultSet.getObject(columnIndex)).append(", ");
+                            } else if (columnType == Types.INTEGER || columnType == Types.TINYINT
+                                || columnType == Types.BIT) {
+                                sql.append(childTableResultSet.getInt(columnIndex)).append(", ");
+                            } else {
+
+                                String val = childTableResultSet.getString(columnIndex);
+                                //escape the single quotes that might be in the value
+                                val = val.replace("'", "\\'");
+
+                                sql.append("'").append(val).append("', ");
+                            }
+                        }
+
+                        //now that we're done with a row
+                        //let's remove the last whitespace and comma
+                        sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1);
+
+                        //if this is the last row, just append a closing
+                        //parenthesis otherwise append a closing parenthesis and a comma
+                        //for the next set of values
+                        sql.append(");");
+                        sql.append("\n");
+                    }
+
+                    childTableIndex++;
+                }
+                sql.append("-- Record ").append(recordCount).append(" Ends --");
+                writeToSqlFile(sql.toString(), initialRecordCount +"-"+maxTransactionsPerFile);
                 sql = new StringBuilder();
+                if(transactionCount == maxTransactionsPerFile){
+                    logger.debug("Dump file has been successfully created at {} ",sqlFolder + "/" + sqlFileName);
+                    compressSqlFile();
+                    //writeToSqlFile(sql.toString(), initialRecordCount +"-"+recordCount);
+                    initialRecordCount = recordCount;
+                    transactionCount = 0;
+                    sql = new StringBuilder();
+                }
             }
+        }catch(Exception e){
+            logger.error("Error export the insert statments {} ",e);
+            throw e;
+        }finally{
+            DbUtils.closeQuietly(parentResultSet);
+            DbUtils.closeQuietly(childTableResultSet);
+            DbUtils.closeQuietly(stmt);
+            DbUtils.closeQuietly(connection);
         }
-        /*if(StringUtils.hasLength(sql.toString())){
-            writeToSqlFile(sql.toString(), initialRecordCount +"-"+maxTransactionsPerFile);
-        }*/
+
+
     }
 
     private void createExportDirIfNotExists() throws IOException {
@@ -324,12 +283,9 @@ public class DbExport {
     }
 
 
-
-    private ResultSet getResultSetFromChildTable(String childTable, String relatedColumn,String relatedValue)
-        throws SQLException {
+    private String getQueryForChildTable(String childTable, String relatedColumn,String relatedValue)
+        {
         String query = null;
-        ResultSet rs = null;
-        stmt = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
         //Build query to get the result set from the parent table
         if(StringUtils.hasLength(relatedColumn) && StringUtils.hasLength(relatedValue)){
             query = "SELECT * FROM " + "`" + childTable + "`" + " WHERE "+"`" + relatedColumn + "`"+ "="  + "'" + relatedValue + "'" + ";";
@@ -337,12 +293,10 @@ public class DbExport {
             query = "SELECT * FROM " + "`" + childTable + "`;";
 
         }
-        return  stmt.executeQuery(query);
+        return  query;
     }
 
-    private ResultSet getResultSetFromParentTable(String parentTable, String fromCreatedDateTime, String toCreatedDateTime)
-        throws SQLException {
-        stmt = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+    private String getQuery(String parentTable, String fromCreatedDateTime, String toCreatedDateTime){
         String query = null;
         ResultSet rs = null;
         //Build query to get the result set from the parent table
@@ -352,7 +306,7 @@ public class DbExport {
             query = "SELECT * FROM " + "`" + parentTable + "`;";
 
         }
-        return  stmt.executeQuery(query);
+        return query;
     }
 
 
@@ -366,28 +320,19 @@ public class DbExport {
      * @throws SQLException exception
      * @throws ClassNotFoundException exception
      */
-    public void export() throws IOException, SQLException, ClassNotFoundException {
+    public void export() throws Exception {
+        StopWatch stopWatch=new StopWatch();
         logger.debug("Initiating the export with the following Database properties {} \n",dbProperties.toString());
         //check if properties is set or not
         if(!utility.isValidateProperties()) {
             logger.error("Invalid config properties: The config properties is missing important parameters: DB_NAME, DB_USERNAME and DB_PASSWORD");
             return;
         }
-
-        //connect to the database
-        connection = utility.getConnection();
-        stmt = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
-
+        stopWatch.start("total_execution_time");
         generateInsertStatements(dbProperties.getParentTable(),dbProperties.getChildTables(),dbProperties.getRelatedColumn(),dbProperties.getFromCreatedDateTime(),dbProperties.getToCreatedDateTime());
-
-        //close the statement
-        stmt.close();
-
-        //close the connection
-        connection.close();
-
-        logger.debug("Closing the connection ");
+        stopWatch.stop();
         logger.debug("Export has been completed successfully");
+        logger.debug("Total execution time in minutes {} ",stopWatch.getTotalTimeSeconds() / 60);
 
     }
 
