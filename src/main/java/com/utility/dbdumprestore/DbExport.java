@@ -89,9 +89,6 @@ public class DbExport {
             int relatedColumnType = Types.VARCHAR;
             StringBuilder columns = new StringBuilder();
 
-            //generate the column names that are present
-            //in the returned result set
-            //at this point the insert is INSERT INTO (`col1`, `col2`, ...)
             for(int i = 0; i < columnCount; i++) {
                 if(relatedColumn.equalsIgnoreCase(metaData.getColumnName( i + 1))){
                     relatedColumnType = metaData.getColumnType(i + 1);
@@ -103,14 +100,13 @@ public class DbExport {
             //now we're going to build the values for data insertion
             parentResultSet.beforeFirst();
             int recordCount = 0;
-            int initialRecordCount = 1;
+            int initialRecordCount = 0;
             int transactionCount = recordCount;
             int maxTransactionsPerFile = dbProperties.getTransactionsPerFile() == 0 ? rowCount : dbProperties.getTransactionsPerFile();
             while(parentResultSet.next()) {
                 recordCount++;
                 transactionCount++;
-                sql.append("-- Record ").append(recordCount);
-                sql.append("\n--\n");
+                sql.append("-- Record ").append(recordCount).append("\n");
                 sql.append("INSERT INTO `").append(parentTable).append("`(").append(columns.toString());
                 //remove the last whitespace and comma
                 sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1).append(") VALUES \n");
@@ -140,14 +136,7 @@ public class DbExport {
                         relatedColumnValue = parentResultSet.getString(columnIndex);
                     }
                 }
-
-                //now that we're done with a row
-                //let's remove the last whitespace and comma
                 sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1);
-
-                //if this is the last row, just append a closing
-                //parenthesis otherwise append a closing parenthesis and a comma
-                //for the next set of values
                 sql.append(");");
                 sql.append("\n");
                 //End of processing a Single Parent row
@@ -163,9 +152,6 @@ public class DbExport {
 
                     if(! StringUtils.hasLength(insertColumnsStore[childTableIndex])){
                         StringBuilder childTableColumns = new StringBuilder();
-                        //generate the column names that are present
-                        //in the returned result set
-                        //at this point the insert is INSERT INTO (`col1`, `col2`, ...)
                         for(int i = 0; i < childTableColumnCount; i++) {
                             childTableColumns.append("`")
                                 .append(childTableMetaData.getColumnName( i + 1))
@@ -203,30 +189,21 @@ public class DbExport {
                                 sql.append("'").append(val).append("', ");
                             }
                         }
-
-                        //now that we're done with a row
-                        //let's remove the last whitespace and comma
                         sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1);
-
-                        //if this is the last row, just append a closing
-                        //parenthesis otherwise append a closing parenthesis and a comma
-                        //for the next set of values
                         sql.append(");");
                         sql.append("\n");
                     }
 
                     childTableIndex++;
                 }
-                sql.append("-- Record ").append(recordCount).append(" Ends --");
-                writeToSqlFile(sql.toString(), initialRecordCount +"-"+maxTransactionsPerFile);
+                sql.append("-- Record ").append(recordCount).append(" Ends -- \n");
+                writeToSqlFile(sql.toString(), initialRecordCount == 0 ? 1 +"-"+(initialRecordCount+maxTransactionsPerFile) : (initialRecordCount + 1) +"-"+(initialRecordCount+maxTransactionsPerFile));
                 sql = new StringBuilder();
                 if(transactionCount == maxTransactionsPerFile){
                     logger.debug("Dump file has been successfully created at {} ",sqlFolder + "/" + sqlFileName);
                     compressSqlFile();
-                    //writeToSqlFile(sql.toString(), initialRecordCount +"-"+recordCount);
                     initialRecordCount = recordCount;
                     transactionCount = 0;
-                    sql = new StringBuilder();
                 }
             }
         }catch(Exception e){
