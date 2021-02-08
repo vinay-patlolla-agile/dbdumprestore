@@ -3,6 +3,7 @@ package com.utility.dbdumprestore;
 
 import com.utility.dbdumprestore.model.DbExportProperties;
 import org.apache.commons.dbutils.DbUtils;
+import org.apache.commons.math3.util.Precision;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -73,7 +74,7 @@ public class DbExport {
             parentQueryExecutionWatch.start();
             parentResultSet = stmt.executeQuery(queryParentTable);
             parentQueryExecutionWatch.stop();
-            logger.debug("Execution time for the query on parent table in seconds {} ",parentQueryExecutionWatch.getTotalTimeSeconds());
+            logger.info("Execution time for the query on parent table in seconds {} ",Precision.round(parentQueryExecutionWatch.getTotalTimeSeconds(),2));
 
             //move to the last row to get max rows returned
             parentResultSet.last();
@@ -153,10 +154,18 @@ public class DbExport {
                 //End of processing a Single Parent row
 
                 int childTableIndex = 0;
+                StopWatch overrallChildTablesExecutionWatch = new StopWatch();
+                overrallChildTablesExecutionWatch.start("Total Query time on child tables for key '"+relatedColumnValue+"'");
                 for (String childTable:childTables) {
                     stmt = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
                     String queryForChildTable = getQueryForChildTable(childTable,relatedColumn,relatedColumnValue);
+                    StopWatch childTableQueryWatch = new StopWatch();
+                    childTableQueryWatch.start("Query time on table '"+childTable+"' with key '"+relatedColumnValue+"'");
+
                     childTableResultSet = stmt.executeQuery(queryForChildTable);
+                    childTableQueryWatch.stop();
+
+                    logger.debug(childTableQueryWatch.getLastTaskName()+" is(in milliseconds ) :"+Precision.round(childTableQueryWatch.getTotalTimeMillis(),2));
 
                     ResultSetMetaData childTableMetaData = childTableResultSet.getMetaData();
                     int childTableColumnCount = childTableMetaData.getColumnCount();
@@ -213,6 +222,8 @@ public class DbExport {
 
                     childTableIndex++;
                 }
+                overrallChildTablesExecutionWatch.stop();
+                logger.info(overrallChildTablesExecutionWatch.getLastTaskName()+" is(in milliseconds ) :"+Precision.round(overrallChildTablesExecutionWatch.getTotalTimeMillis(),2));
                 recordBuilder.append("\n").append(sql);
                 recordBuilder.append("-- Record ").append(" Ends\n");
                 writeToSqlFile(recordBuilder.toString(), initialRecordCount == 0 ? 1 +"-"+(initialRecordCount+maxTransactionsPerFile) : (initialRecordCount + 1) +"-"+(initialRecordCount+maxTransactionsPerFile));
