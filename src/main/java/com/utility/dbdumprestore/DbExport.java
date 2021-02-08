@@ -106,7 +106,9 @@ public class DbExport {
             while(parentResultSet.next()) {
                 recordCount++;
                 transactionCount++;
-                sql.append("-- Record ").append(recordCount).append("\n");
+                StringBuilder recordBuilder=new StringBuilder();
+                //parentResultSet.getString()
+                recordBuilder.append("-- Record ");
                 sql.append("INSERT INTO `").append(parentTable).append("`(").append(columns.toString());
                 //remove the last whitespace and comma
                 sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1).append(") VALUES \n");
@@ -128,6 +130,15 @@ public class DbExport {
                         //escape the single quotes that might be in the value
                         val = val.replace("'", "\\'");
                         sql.append("'").append(val).append("', ");
+                    }
+
+                    if("customer_transaction_ref".equalsIgnoreCase(metaData.getColumnName(columnIndex))){
+                        recordBuilder.append(parentResultSet.getString(columnIndex));
+                    }else if("tracking_number".equalsIgnoreCase(metaData.getColumnName(columnIndex))){
+                        if(StringUtils.hasLength(parentResultSet.getString(columnIndex))){
+                            recordBuilder.append("-").append("tno").append(parentResultSet.getString(columnIndex));
+                        }
+
                     }
 
                     if((relatedColumnType == Types.INTEGER || relatedColumnType == Types.TINYINT || relatedColumnType == Types.BIT) && relatedColumn.equalsIgnoreCase(metaData.getColumnName(i + 1))){
@@ -188,6 +199,12 @@ public class DbExport {
 
                                 sql.append("'").append(val).append("', ");
                             }
+                            if("tracking_number".equalsIgnoreCase(childTableMetaData.getColumnName(columnIndex))){
+                                if(StringUtils.hasLength(childTableResultSet.getString(columnIndex))){
+                                    recordBuilder.append("-").append("tno").append(childTableResultSet.getString(columnIndex));
+                                }
+
+                            }
                         }
                         sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1);
                         sql.append(");");
@@ -196,9 +213,11 @@ public class DbExport {
 
                     childTableIndex++;
                 }
-                sql.append("-- Record ").append(recordCount).append(" Ends -- \n");
-                writeToSqlFile(sql.toString(), initialRecordCount == 0 ? 1 +"-"+(initialRecordCount+maxTransactionsPerFile) : (initialRecordCount + 1) +"-"+(initialRecordCount+maxTransactionsPerFile));
+                recordBuilder.append("\n").append(sql);
+                recordBuilder.append("-- Record ").append(" Ends\n");
+                writeToSqlFile(recordBuilder.toString(), initialRecordCount == 0 ? 1 +"-"+(initialRecordCount+maxTransactionsPerFile) : (initialRecordCount + 1) +"-"+(initialRecordCount+maxTransactionsPerFile));
                 sql = new StringBuilder();
+                recordBuilder = new StringBuilder();
                 if(transactionCount == maxTransactionsPerFile){
                     logger.debug("Dump file has been successfully created at {} ",sqlFolder + "/" + sqlFileName);
                     compressSqlFile();
