@@ -44,6 +44,7 @@ public class DbExport {
     private String zipFileName = "";
     private File generatedZipFile;
     private File sqlFolder;
+    private static final String dateToday = new SimpleDateFormat("d_M_Y").format(new Date());
 
 
 
@@ -413,7 +414,7 @@ public class DbExport {
      */
     public String getSqlFilename(){
         return utility.isSqlFileNamePropertySet() ? dbProperties.getSqlFileName():
-            new SimpleDateFormat("d_M_Y_H_mm_ss").format(new Date())  + "_database_dump";
+            dateToday  + "_database_dump";
     }
 
     public String getSqlFileName() {
