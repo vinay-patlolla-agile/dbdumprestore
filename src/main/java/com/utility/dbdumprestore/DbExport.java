@@ -85,7 +85,6 @@ public class DbExport {
             if(rowCount <= 0) {
                 logger.debug("No records found for the table {} ",parentTable);
             }
-            createExportDirIfNotExists();
             ResultSetMetaData metaData = parentResultSet.getMetaData();
             int columnCount = metaData.getColumnCount();
             int relatedColumnType = Types.VARCHAR;
@@ -348,6 +347,17 @@ public class DbExport {
             return;
         }
         stopWatch.start("total_execution_time");
+        createExportDirIfNotExists();
+        if(dbProperties.getCreateTableIfNotExisits()){
+            logger.debug("Writing the create table statements");
+            String createTableSql = getTableInsertStatement(dbProperties.getParentTable());
+            writeToSqlFile(createTableSql,"create_tables");
+            for(String childTable : dbProperties.getChildTables()){
+                createTableSql = getTableInsertStatement(childTable);
+                writeToSqlFile(createTableSql,"create_tables");
+            }
+            logger.debug("Completed writing the create table statements");
+        }
         generateInsertStatements(dbProperties.getParentTable(),dbProperties.getChildTables(),dbProperties.getRelatedColumn(),dbProperties.getFromCreatedDateTime(),dbProperties.getToCreatedDateTime());
         stopWatch.stop();
         logger.debug("Export has been completed successfully");
@@ -355,6 +365,46 @@ public class DbExport {
 
     }
 
+
+    /**
+     * This will generate the SQL statement
+     * for creating the table supplied in the
+     * method signature
+     * @param table the table concerned
+     * @return String
+     * @throws SQLException exception
+     */
+    private String getTableInsertStatement(String table){
+
+        StringBuilder createTableSql = new StringBuilder();
+        ResultSet rs;
+        Connection connection = null;
+        Statement stmt = null;
+        try {
+            if(table != null && !table.isEmpty()){
+                connection = utility.getConnection();
+                stmt = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+                rs = stmt.executeQuery("SHOW CREATE TABLE " + "`" + table + "`;");
+                while ( rs.next() ) {
+                    String qtbl = rs.getString(1);
+                    String query = rs.getString(2);
+                    createTableSql.append("\n--\n");
+                    // sql.append("\n").append(MysqlBaseService.SQL_START_PATTERN).append("  table dump : ").append(qtbl);
+                    query = query.trim().replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS");
+
+                    createTableSql.append(query).append(";\n");
+                }
+                //sql.append("\n").append(MysqlBaseService.SQL_END_PATTERN).append("  table dump : ").append(table);
+                createTableSql.append("\n--\n");
+            }
+        }catch (SQLException | ClassNotFoundException e) {
+            logger.error("Error in executing the query {}",e);
+        }finally {
+            DbUtils.closeQuietly(stmt);
+            DbUtils.closeQuietly(connection);
+        }
+        return createTableSql.toString();
+    }
 
     /**
      * This will get the final output
