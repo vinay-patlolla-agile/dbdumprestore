@@ -7,6 +7,7 @@ import org.apache.commons.math3.util.Precision;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.util.FileSystemUtils;
 import org.springframework.util.StopWatch;
 import org.springframework.util.StringUtils;
 import org.zeroturnaround.zip.ZipUtil;
@@ -136,12 +137,10 @@ public class DbExport {
                     if("customer_transaction_ref".equalsIgnoreCase(metaData.getColumnName(columnIndex))){
                         recordBuilder.append(parentResultSet.getString(columnIndex));
                     }else if("tracking_number".equalsIgnoreCase(metaData.getColumnName(columnIndex))){
-                        if(StringUtils.hasLength(parentResultSet.getString(columnIndex))){
+                        if(StringUtils.hasLength(parentResultSet.getString(columnIndex)) && ! recordBuilder.toString().contains("-tno"+parentResultSet.getString(columnIndex))){
                             recordBuilder.append("-").append("tno").append(parentResultSet.getString(columnIndex));
                         }
-
                     }
-
                     if((relatedColumnType == Types.INTEGER || relatedColumnType == Types.TINYINT || relatedColumnType == Types.BIT) && relatedColumn.equalsIgnoreCase(metaData.getColumnName(i + 1))){
                         relatedColumnValue = String.valueOf(parentResultSet.getInt(columnIndex));
                     }else if(relatedColumnType == Types.VARCHAR && relatedColumn.equalsIgnoreCase(metaData.getColumnName(i + 1)) ){
@@ -257,6 +256,9 @@ public class DbExport {
             if(!res) {
                 throw new IOException(LOG_PREFIX + ": Unable to create temp dir: " + file.getAbsolutePath());
             }
+        }else{
+            deleteDirectoryFiles(file);
+            boolean res = file.mkdir();
         }
 
         //write the sql file out
@@ -267,6 +269,16 @@ public class DbExport {
                 throw new IOException(LOG_PREFIX + ": Unable to create temp dir: " + file.getAbsolutePath());
             }
         }
+    }
+
+    private boolean deleteDirectoryFiles(File directoryToDelete){
+        File[] allFiles = directoryToDelete.listFiles();
+        if (allFiles != null) {
+            for (File fileToDelete : allFiles) {
+                deleteDirectoryFiles(fileToDelete);
+            }
+        }
+        return directoryToDelete.delete();
     }
 
     private void writeToSqlFile(String sql,String fileNameSuffix) throws IOException {
