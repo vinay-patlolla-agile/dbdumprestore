@@ -208,7 +208,7 @@ public class DbExport {
                                 sql.append("'").append(val).append("', ");
                             }
                             if("tracking_number".equalsIgnoreCase(childTableMetaData.getColumnName(columnIndex))){
-                                if(StringUtils.hasLength(childTableResultSet.getString(columnIndex))){
+                                if(StringUtils.hasLength(childTableResultSet.getString(columnIndex)) && ! recordBuilder.toString().contains("-tno"+childTableResultSet.getString(columnIndex))){
                                     recordBuilder.append("-").append("tno").append(childTableResultSet.getString(columnIndex));
                                 }
 
