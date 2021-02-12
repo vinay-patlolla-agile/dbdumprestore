@@ -7,7 +7,6 @@ import org.apache.commons.math3.util.Precision;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.util.FileSystemUtils;
 import org.springframework.util.StopWatch;
 import org.springframework.util.StringUtils;
 import org.zeroturnaround.zip.ZipUtil;
@@ -17,10 +16,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.sql.*;
 import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 @Component
 public class DbExport {
@@ -28,6 +27,10 @@ public class DbExport {
     private final DbExportProperties dbProperties;
 
     private final Utility utility;
+
+    private Connection connection;
+
+    private String sqlFileName;
 
 
 
@@ -40,14 +43,10 @@ public class DbExport {
     private Logger logger = LoggerFactory.getLogger(getClass());
     private final String LOG_PREFIX = "DB-Export: ";
     private String dirName = "DUMP";
-    private String sqlFileName = "";
     private String zipFileName = "";
     private File generatedZipFile;
     private File sqlFolder;
-    private static final String dateToday = new SimpleDateFormat("d_M_Y").format(new Date());
-
-
-
+    private static final String dateToday = LocalDateTime.now().toString();
 
 
     /**
@@ -64,13 +63,9 @@ public class DbExport {
         String[] insertColumnsStore=new String[childTables.size()];
         ResultSet parentResultSet = null;
         ResultSet childTableResultSet = null;
-        Connection connection = null;
         Statement stmt = null;
         String queryParentTable =getQuery(parentTable,fromCreatedDateTime,toCreatedDateTime);
-
         try {
-
-            connection = utility.getConnection();
             stmt = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
             StopWatch parentQueryExecutionWatch = new StopWatch();
             parentQueryExecutionWatch.start();
@@ -256,10 +251,10 @@ public class DbExport {
             if(!res) {
                 throw new IOException(LOG_PREFIX + ": Unable to create temp dir: " + file.getAbsolutePath());
             }
-        }else{
+        }/*else{
             deleteDirectoryFiles(file);
             boolean res = file.mkdir();
-        }
+        }*/
 
         //write the sql file out
         sqlFolder = new File(dirName + "/sql");
@@ -282,10 +277,10 @@ public class DbExport {
     }
 
     private void writeToSqlFile(String sql,String fileNameSuffix) throws IOException {
-        sqlFileName = getSqlFilename();
-        sqlFileName = StringUtils.hasLength(fileNameSuffix) ?sqlFileName+"_"+fileNameSuffix+".sql": sqlFileName+".sql";
+        String filename = getSqlFilename();
+        filename = StringUtils.hasLength(fileNameSuffix) ?sqlFileName+"_"+fileNameSuffix+".sql": sqlFileName+".sql";
         //logger.debug("Writing the sql to  {} ",sqlFolder + "/" + sqlFileName);
-        try (FileOutputStream outputStream = new FileOutputStream(sqlFolder + "/" + sqlFileName,true)) {
+        try (FileOutputStream outputStream = new FileOutputStream(sqlFolder + "/" + filename,true)) {
             outputStream.write(sql.getBytes());
             outputStream.close();
         }
@@ -349,6 +344,8 @@ public class DbExport {
         }
         stopWatch.start("total_execution_time");
         createExportDirIfNotExists();
+        connection = utility.getConnection();
+        createSqlFileName();
         if(dbProperties.getCreateTableIfNotExisits()){
             logger.debug("Writing the create table statements");
             String createTableSql = getTableInsertStatement(dbProperties.getParentTable());
@@ -366,6 +363,10 @@ public class DbExport {
 
     }
 
+    private void createSqlFileName() {
+        getSqlFilename();
+    }
+
 
     /**
      * This will generate the SQL statement
@@ -379,11 +380,9 @@ public class DbExport {
 
         StringBuilder createTableSql = new StringBuilder();
         ResultSet rs;
-        Connection connection = null;
         Statement stmt = null;
         try {
             if(table != null && !table.isEmpty()){
-                connection = utility.getConnection();
                 stmt = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
                 rs = stmt.executeQuery("SHOW CREATE TABLE " + "`" + table + "`;");
                 while ( rs.next() ) {
@@ -398,11 +397,10 @@ public class DbExport {
                 //sql.append("\n").append(MysqlBaseService.SQL_END_PATTERN).append("  table dump : ").append(table);
                 createTableSql.append("\n--\n");
             }
-        }catch (SQLException | ClassNotFoundException e) {
+        }catch (SQLException  e) {
             logger.error("Error in executing the query {}",e);
         }finally {
             DbUtils.closeQuietly(stmt);
-            DbUtils.closeQuietly(connection);
         }
         return createTableSql.toString();
     }
@@ -413,8 +411,10 @@ public class DbExport {
      * @return String
      */
     public String getSqlFilename(){
-        return utility.isSqlFileNamePropertySet() ? dbProperties.getSqlFileName():
-            dateToday  + "_database_dump";
+        if(! StringUtils.hasLength(sqlFileName)){
+            sqlFileName = dateToday  + "_database_dump";
+        }
+        return sqlFileName;
     }
 
     public String getSqlFileName() {
