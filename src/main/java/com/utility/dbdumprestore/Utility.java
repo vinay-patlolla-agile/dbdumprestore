@@ -1,7 +1,7 @@
 package com.utility.dbdumprestore;
 
-
-import com.utility.dbdumprestore.model.DbExportProperties;
+import com.utility.dbdumprestore.model.DbExportDeleteProperties;
+import com.utility.dbdumprestore.model.DbExportInsertProperties;
 import com.utility.dbdumprestore.model.DbImportProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,11 +18,13 @@ public class Utility {
 
         private static Logger logger = LoggerFactory.getLogger(Utility.class);
 
-        private final DbExportProperties dbProperties;
         private final DbImportProperties dbImportProperties;
+        private final DbExportInsertProperties dbExportInsertProperties;
+        private final DbExportDeleteProperties dbExportDeleteProperties;
 
-        public Utility(DbExportProperties dbProperties, DbImportProperties dbImportProperties){
-            this.dbProperties= dbProperties;
+        public Utility(DbExportInsertProperties dbExportInsertProperties, DbExportDeleteProperties dbExportDeleteProperties, DbImportProperties dbImportProperties){
+            this.dbExportInsertProperties= dbExportInsertProperties;
+            this.dbExportDeleteProperties= dbExportDeleteProperties;
             this.dbImportProperties = dbImportProperties;
         }
 
@@ -166,45 +168,47 @@ public class Utility {
      * user with no password
      * @return true if all required properties are present and false if otherwise
      */
-    public boolean isValidateProperties() {
-        return dbProperties != null &&
-            StringUtils.hasLength(dbProperties.getUsername()) &&
-            (StringUtils.hasLength(dbProperties.getName()) || StringUtils.hasLength(dbProperties.getJdbcUrl()));
+    public boolean isValidateDbExportInsertProperties() {
+        return dbExportInsertProperties != null &&
+            StringUtils.hasLength(dbExportInsertProperties.getUsername()) &&
+            (StringUtils.hasLength(dbExportInsertProperties.getDbName()) || StringUtils.hasLength(dbExportInsertProperties.getJdbcUrl()));
     }
 
     /**
      * This function will check if the required minimum
-     * properties are set for database connection and importing
+     * properties are set for database connection and exporting
      * password is excluded here because it's possible to have a mysql database
      * user with no password
      * @return true if all required properties are present and false if otherwise
      */
-    public boolean isValidateImportProperties() {
-        return dbImportProperties != null &&
-            StringUtils.hasLength(dbImportProperties.getUsername()) &&
-            (StringUtils.hasLength(dbImportProperties.getDatabase()) || StringUtils.hasLength(dbImportProperties.getJdbcUrl()));
+    public boolean isValidateDbExportDeleteProperties() {
+        return dbExportDeleteProperties != null &&
+            StringUtils.hasLength(dbExportDeleteProperties.getUsername()) &&
+            (StringUtils.hasLength(dbExportDeleteProperties.getDbName()) || StringUtils.hasLength(dbExportDeleteProperties.getJdbcUrl()));
     }
 
     /**
-     * This function will return true
-     * or false based on the availability
-     * or absence of a custom output sql
-     * file name
-     * @return bool
+     * This function will check if the required minimum
+     * properties are set for database connection and exporting
+     * password is excluded here because it's possible to have a mysql database
+     * user with no password
+     * @return true if all required properties are present and false if otherwise
      */
-    public boolean isSqlFileNamePropertySet(){
-        return dbProperties != null &&
-            StringUtils.hasLength(dbProperties.getSqlFileName());
+    public boolean isValidateDbImportProperties() {
+        return dbImportProperties != null &&
+            StringUtils.hasLength(dbImportProperties.getUsername()) &&
+            (StringUtils.hasLength(dbImportProperties.getDbName()) || StringUtils.hasLength(dbImportProperties.getJdbcUrl()));
     }
 
-    public Connection getConnection() throws SQLException, ClassNotFoundException {
-        String database = dbProperties.getName();
-        String jdbcURL = dbProperties.getJdbcUrl();
-        String driverName = dbProperties.getJdbcDriver();
+
+    public Connection getExportInsertConnection() throws SQLException, ClassNotFoundException {
+        String database = dbExportInsertProperties.getDbName();
+        String jdbcURL = dbExportInsertProperties.getJdbcUrl();
+        String driverName = dbExportInsertProperties.getJdbcDriver();
 
         Connection connection = null;
         if(jdbcURL.isEmpty()) {
-            connection = Utility.connect(dbProperties.getUsername(), dbProperties.getPassword(),
+            connection = Utility.connect(dbExportInsertProperties.getUsername(), dbExportInsertProperties.getPassword(),
                 database, driverName);
         }else {
             if (jdbcURL.contains("?")) {
@@ -213,14 +217,36 @@ public class Utility {
                 database = jdbcURL.substring(jdbcURL.lastIndexOf("/") + 1);
             }
             logger.debug("database name extracted from connection string: " + database);
-            connection = Utility.connectWithURL(dbProperties.getUsername(), dbProperties.getPassword(),
+            connection = Utility.connectWithURL(dbExportInsertProperties.getUsername(), dbExportInsertProperties.getPassword(),
+                jdbcURL, driverName);
+        }
+        return connection;
+    }
+
+    public Connection getExportDeleteConnection() throws SQLException, ClassNotFoundException {
+        String database = dbExportDeleteProperties.getDbName();
+        String jdbcURL = dbExportDeleteProperties.getJdbcUrl();
+        String driverName = dbExportDeleteProperties.getJdbcDriver();
+
+        Connection connection = null;
+        if(jdbcURL.isEmpty()) {
+            connection = Utility.connect(dbExportDeleteProperties.getUsername(), dbExportDeleteProperties.getPassword(),
+                database, driverName);
+        }else {
+            if (jdbcURL.contains("?")) {
+                database = jdbcURL.substring(jdbcURL.lastIndexOf("/") + 1, jdbcURL.indexOf("?"));
+            } else {
+                database = jdbcURL.substring(jdbcURL.lastIndexOf("/") + 1);
+            }
+            logger.debug("database name extracted from connection string: " + database);
+            connection = Utility.connectWithURL(dbExportDeleteProperties.getUsername(), dbExportDeleteProperties.getPassword(),
                 jdbcURL, driverName);
         }
         return connection;
     }
 
     public Connection getImportDbConnection() throws SQLException, ClassNotFoundException {
-        String database = dbImportProperties.getDatabase();
+        String database = dbImportProperties.getDbName();
         String jdbcURL = dbImportProperties.getJdbcUrl();
         String driverName = dbImportProperties.getJdbcDriver();
 

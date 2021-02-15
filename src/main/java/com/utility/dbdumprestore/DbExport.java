@@ -1,7 +1,7 @@
 package com.utility.dbdumprestore;
 
 
-import com.utility.dbdumprestore.model.DbExportProperties;
+import com.utility.dbdumprestore.model.DbExportInsertProperties;
 import org.apache.commons.dbutils.DbUtils;
 import org.apache.commons.math3.util.Precision;
 import org.slf4j.Logger;
@@ -15,16 +15,14 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.sql.*;
-import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
-import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 
 @Component
 public class DbExport {
 
-    private final DbExportProperties dbProperties;
+    private final DbExportInsertProperties dbProperties;
 
     private final Utility utility;
 
@@ -34,7 +32,7 @@ public class DbExport {
 
 
 
-    public DbExport(DbExportProperties dbProperties, Utility utility){
+    public DbExport(DbExportInsertProperties dbProperties, Utility utility){
         this.dbProperties = dbProperties;
         this.utility = utility;
     }
@@ -99,8 +97,10 @@ public class DbExport {
             int recordCount = 0;
             int initialRecordCount = 0;
             int transactionCount = recordCount;
+            int numberOfRecordsExported = 0;
             int maxTransactionsPerFile = dbProperties.getTransactionsPerFile() == 0 ? rowCount : dbProperties.getTransactionsPerFile();
             while(parentResultSet.next()) {
+                numberOfRecordsExported++;
                 recordCount++;
                 transactionCount++;
                 StringBuilder recordBuilder=new StringBuilder();
@@ -179,6 +179,7 @@ public class DbExport {
                     childTableResultSet.beforeFirst();
 
                     while(childTableResultSet.next()) {
+                        numberOfRecordsExported++;
                         sql.append("INSERT INTO `").append(childTable).append("`(").append(columnsFromStore.toString());
                         //remove the last whitespace and comma
                         sql.deleteCharAt(sql.length() - 1).deleteCharAt(sql.length() - 1).append(") VALUES \n").append("(");
@@ -230,6 +231,7 @@ public class DbExport {
                     transactionCount = 0;
                 }
             }
+            logger.info("Total number of records processed were {} ",numberOfRecordsExported);
         }catch(Exception e){
             logger.error("Error export the insert statments {} ",e);
             throw e;
@@ -251,10 +253,7 @@ public class DbExport {
             if(!res) {
                 throw new IOException(LOG_PREFIX + ": Unable to create temp dir: " + file.getAbsolutePath());
             }
-        }/*else{
-            deleteDirectoryFiles(file);
-            boolean res = file.mkdir();
-        }*/
+        }
 
         //write the sql file out
         sqlFolder = new File(dirName + "/sql");
@@ -338,13 +337,13 @@ public class DbExport {
         StopWatch stopWatch=new StopWatch();
         logger.debug("Initiating the export with the following Database properties {} \n",dbProperties.toString());
         //check if properties is set or not
-        if(!utility.isValidateProperties()) {
+        if(!utility.isValidateDbExportInsertProperties()) {
             logger.error("Invalid config properties: The config properties is missing important parameters: DB_NAME, DB_USERNAME and DB_PASSWORD");
             return;
         }
         stopWatch.start("total_execution_time");
         createExportDirIfNotExists();
-        connection = utility.getConnection();
+        connection = utility.getExportInsertConnection();
         createSqlFileName();
         if(dbProperties.getCreateTableIfNotExisits()){
             logger.debug("Writing the create table statements");
